@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENT Teaching Register</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --ink:#15211c;
+    --paper:#f6f4ec;
+    --card:#fffdf7;
+    --line:#d8d2c0;
+    --moss:#3f6b4f;      /* primary */
+    --moss-deep:#2c4d39;
+    --clay:#c0613a;      /* accent / alert */
+    --clay-soft:#e8c4ac;
+    --gold:#b08a3e;
+    --muted:#7a7568;
+    --good:#3f6b4f;
+    --warn:#b08a3e;
+    --bad:#c0613a;
+    --shadow:0 1px 2px rgba(21,33,28,.06),0 8px 24px rgba(21,33,28,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:"Inter","Segoe UI",system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.5;
+    font-size:15px;
+  }
+  /* ---- masthead ---- */
+  header{
+    background:var(--moss-deep);
+    color:#f6f4ec;
+    padding:22px clamp(16px,4vw,40px) 20px;
+    border-bottom:3px solid var(--gold);
+  }
+  .masthead-row{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;justify-content:space-between;max-width:1180px;margin:0 auto}
+  .brand{display:flex;align-items:baseline;gap:12px}
+  .brand .mark{
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1;
+  }
+  .brand .sub{font-size:12px;text-transform:uppercase;letter-spacing:.22em;color:#b8cbbd;font-weight:600}
+  .cohort-pill{font-size:12.5px;color:#cdd9cf}
+  /* ---- nav tabs ---- */
+  nav{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;box-shadow:0 1px 0 rgba(21,33,28,.04)}
+  .tabs{display:flex;gap:2px;max-width:1180px;margin:0 auto;padding:0 clamp(8px,3vw,40px);overflow-x:auto}
+  .tab{
+    appearance:none;border:none;background:none;font:inherit;cursor:pointer;
+    padding:13px 16px;color:var(--muted);font-weight:600;font-size:14px;
+    border-bottom:3px solid transparent;white-space:nowrap;transition:color .15s;
+  }
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--moss-deep);border-bottom-color:var(--clay)}
+  main{max-width:1180px;margin:0 auto;padding:clamp(18px,3vw,32px) clamp(14px,3vw,40px) 80px}
+  .panel{display:none;animation:fade .25s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  /* ---- shared ---- */
+  h2.panel-title{font-family:Georgia,serif;font-size:23px;font-weight:700;margin-bottom:4px;letter-spacing:-.3px}
+  .panel-lede{color:var(--muted);font-size:14px;margin-bottom:22px;max-width:62ch}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+  .pad{padding:clamp(16px,2.4vw,24px)}
+  button.btn{
+    appearance:none;cursor:pointer;font:inherit;font-weight:600;font-size:14px;
+    border-radius:9px;padding:9px 16px;border:1px solid transparent;transition:.15s;
+  }
+  .btn.primary{background:var(--moss);color:#fff}
+  .btn.primary:hover{background:var(--moss-deep)}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+  .btn.ghost:hover{border-color:var(--moss);color:var(--moss-deep)}
+  .btn.clay{background:var(--clay);color:#fff}
+  .btn.clay:hover{filter:brightness(.94)}
+  .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:7px}
+  input,select{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
+  input:focus,select:focus{outline:2px solid var(--moss);outline-offset:-1px;border-color:var(--moss)}
+  label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+  .field{margin-bottom:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  /* ---- dashboard stats ---- */
+  .stat-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+  .stat .n{font-family:Georgia,serif;font-size:30px;font-weight:700;line-height:1;color:var(--moss-deep)}
+  .stat .l{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:6px}
+  .stat.accent .n{color:var(--clay)}
+  /* ---- table ---- */
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  thead th{
+    background:#eef0e6;text-align:left;padding:11px 12px;font-size:11.5px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--moss-deep);font-weight:700;border-bottom:1px solid var(--line);
+    position:sticky;top:0;white-space:nowrap;cursor:pointer;user-select:none;
+  }
+  thead th:hover{background:#e6e9dc}
+  thead th.no-sort{cursor:default}
+  thead th .arrow{opacity:.4;font-size:10px}
+  tbody td{padding:10px 12px;border-bottom:1px solid #ece8db;vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#faf8f0}
+  .name-cell{font-weight:600;white-space:nowrap}
+  .grade-tag{font-size:11px;color:var(--muted);font-weight:500;margin-left:6px}
+  .sess-cells{display:flex;gap:3px}
+  .dot{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;border:1px solid transparent;transition:transform .08s,box-shadow .08s}
+  .dot:hover{transform:scale(1.18);box-shadow:0 0 0 2px var(--moss-deep)}
+  .dot.present{background:var(--moss);color:#fff}
+  .dot.absent{background:#fff;border-color:var(--line);color:#cfcabb}
+  .dot.excused{background:var(--clay-soft);color:var(--clay);border-color:#dba883}
+  .dot.na{background:#eceadf;color:#c3bfae}
+  #cellTip{position:fixed;z-index:200;pointer-events:none;opacity:0;transition:opacity .1s;
+    background:var(--moss-deep);color:#f6f4ec;border-radius:9px;padding:9px 12px;font-size:12.5px;line-height:1.45;
+    box-shadow:0 6px 22px rgba(21,33,28,.28);max-width:240px}
+  #cellTip.show{opacity:1}
+  #cellTip .tip-sess{font-weight:700;font-size:13px;margin-bottom:2px}
+  #cellTip .tip-month{color:#b8cbbd;font-weight:600;letter-spacing:.03em}
+  #cellTip .tip-row{margin-top:5px;display:flex;align-items:center;gap:7px}
+  #cellTip .tip-state{display:inline-block;width:8px;height:8px;border-radius:50%}
+  #cellTip .s-present{background:#8fd3a3}#cellTip .s-excused{background:#e8a878}
+  #cellTip .s-absent{background:#cfcabb}#cellTip .s-na{background:#9aa093}
+  /* custom month picker */
+  .month-input{position:relative;display:flex;align-items:stretch}
+  .month-input input{padding-right:38px}
+  .month-cal-btn{position:absolute;right:1px;top:1px;bottom:1px;width:34px;border:none;background:transparent;cursor:pointer;font-size:15px;border-radius:0 8px 8px 0;color:var(--muted)}
+  .month-cal-btn:hover{background:#eef0e6}
+  .month-pop{position:absolute;z-index:210;top:calc(100% + 6px);left:0;width:248px;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;box-shadow:0 10px 30px rgba(21,33,28,.18);padding:12px;display:none}
+  .month-pop.open{display:block;animation:fade .14s ease}
+  .month-pop .yr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .month-pop .yr b{font-family:Georgia,serif;font-size:17px;font-weight:700}
+  .month-pop .yr button{appearance:none;border:1px solid var(--line);background:#fff;cursor:pointer;width:30px;height:30px;border-radius:7px;font-size:15px;font-weight:700;color:var(--moss-deep)}
+  .month-pop .yr button:hover{border-color:var(--moss);background:#f0f4ee}
+  .month-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .month-grid button{appearance:none;border:1px solid transparent;background:#f3f1e8;cursor:pointer;padding:9px 0;border-radius:8px;font:inherit;font-size:13px;font-weight:600;color:var(--ink)}
+  .month-grid button:hover{background:#e3e8da}
+  .month-grid button.sel{background:var(--moss);color:#fff}
+  .month-pop .pop-foot{display:flex;justify-content:space-between;margin-top:10px}
+  .month-pop .pop-foot button{appearance:none;border:none;background:none;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;color:var(--muted);padding:4px 6px;border-radius:6px}
+  .month-pop .pop-foot button:hover{color:var(--moss-deep);background:#eef0e6}
+  .pct{font-weight:700;font-variant-numeric:tabular-nums}
+  .pct-bar{height:6px;border-radius:99px;background:#e7e3d4;overflow:hidden;margin-top:4px;min-width:60px}
+  .pct-bar > span{display:block;height:100%;border-radius:99px}
+  .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap}
+  .badge.cct{background:#efe3c8;color:#8a6a1e}
+  .badge.mat{background:#f2d9ca;color:#9c4a26}
+  .badge.oop{background:#d9e3ec;color:#3a5a78}
+  .badge.idt_out{background:#e0dcef;color:#544a86}
+  .badge.idt_in{background:#d5e8df;color:#2f6b4d}
+  .badge.active{background:#dcebe0;color:var(--moss-deep)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:14px 2px 0}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend .dot{cursor:default}
+  /* ---- QR ---- */
+  .qr-layout{display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:start}
+  .qr-box{text-align:center}
+  #qrcode{display:inline-block;padding:16px;background:#fff;border:1px solid var(--line);border-radius:14px}
+  #qrcode img,#qrcode canvas{display:block}
+  .session-picker{display:flex;flex-direction:column;gap:8px}
+  .sess-radio{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:9px;cursor:pointer;background:#fff;transition:.12s}
+  .sess-radio:hover{border-color:var(--moss)}
+  .sess-radio.sel{border-color:var(--moss);background:#f0f4ee;box-shadow:inset 0 0 0 1px var(--moss)}
+  .sess-radio input{width:auto}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--moss-deep);color:#fff;padding:13px 22px;border-radius:10px;font-weight:600;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:.3s;z-index:100}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .empty{padding:34px;text-align:center;color:var(--muted);font-size:14px}
+  .list-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #ece8db}
+  .list-item:last-child{border-bottom:none}
+  .li-main{font-weight:600}
+  .li-sub{font-size:12.5px;color:var(--muted)}
+  .pill-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .inline-form{display:grid;grid-template-columns:1.3fr 1fr 1.4fr auto;gap:10px;align-items:end}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:#fff;font:inherit;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:var(--moss);color:#fff}
+  .helper{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .danger-zone{margin-top:30px;border:1px dashed #d6b3a0;border-radius:12px;padding:16px;background:#fbf3ee}
+  .kebab{cursor:pointer;color:var(--muted);font-weight:700;padding:2px 8px;border-radius:6px}
+  .kebab:hover{background:#eee}
+  @media(max-width:820px){
+    .qr-layout{grid-template-columns:1fr}
+    .grid2{grid-template-columns:1fr}
+    .inline-form{grid-template-columns:1fr 1fr}
+  }
+  /* form-only (kiosk) view shown when ?form= in URL */
+  body.kiosk nav,body.kiosk header .cohort-pill{display:none}
+  .kiosk-card{max-width:460px;margin:40px auto;padding:0 16px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="masthead-row">
+    <div class="brand">
+      <span class="mark">The Register</span>
+      <span class="sub">ENT Regional Teaching</span>
+    </div>
+    <span class="cohort-pill" id="cohortPill"></span>
+  </div>
+</header>
+
+<nav id="mainNav">
+  <div class="tabs">
+    <button class="tab active" data-tab="dash">Attendance</button>
+    <button class="tab" data-tab="checkin">Check-in / QR</button>
+    <button class="tab" data-tab="excused">Excused absences</button>
+    <button class="tab" data-tab="status">Long-term status</button>
+    <button class="tab" data-tab="manage">Trainees &amp; sessions</button>
+  </div>
+</nav>
+
+<main id="appMain">
+
+  <!-- ===== DASHBOARD ===== -->
+  <section class="panel active" id="panel-dash">
+    <h2 class="panel-title">Attendance summary</h2>
+    <p class="panel-lede">Live figures recalculated from check-ins, excused absences and long-term status. Adjusted attendance excludes excused sessions and any month a trainee was on leave or post-CCT from the denominator.</p>
+    <div class="stat-strip" id="statStrip"></div>
+    <div class="row-actions" style="margin-bottom:14px">
+      <input id="dashSearch" placeholder="Search trainee…" style="max-width:260px">
+      <button class="btn ghost sm" id="exportCsv">Export CSV</button>
+    </div>
+    <div class="table-wrap">
+      <table id="dashTable"><thead></thead><tbody></tbody></table>
+    </div>
+    <div class="legend">
+      <span><span class="dot present">✓</span> Attended</span>
+      <span><span class="dot absent"></span> Missed</span>
+      <span><span class="dot excused">e</span> Excused</span>
+      <span><span class="dot na">–</span> Not eligible (leave / pre-start / post-CCT)</span>
+    </div>
+  </section>
+
+  <!-- ===== CHECK-IN / QR ===== -->
+  <section class="panel" id="panel-checkin">
+    <h2 class="panel-title">Session check-in</h2>
+    <p class="panel-lede">Display the QR at the teaching day — trainees scan, pick their name, and they're logged instantly. Or check people in manually below.</p>
+    <div class="qr-layout">
+      <div class="qr-box card pad">
+        <div id="qrcode"></div>
+        <p class="helper" style="margin-top:12px">Scan to open the sign-in form for<br><strong id="qrSessLabel">—</strong></p>
+        <button class="btn ghost sm" id="copyLink" style="margin-top:10px">Copy form link</button>
+      </div>
+      <div>
+        <div class="field">
+          <label class="fld">Active session</label>
+          <div class="session-picker" id="sessPicker"></div>
+        </div>
+        <div class="card pad" style="margin-top:18px">
+          <label class="fld">Quick manual check-in</label>
+          <div class="inline-form" style="grid-template-columns:1.4fr .8fr auto">
+            <div>
+              <select id="ciTrainee"></select>
+            </div>
+            <div>
+              <select id="ciGrade">
+                <option value="">Grade…</option>
+                <option>ST3</option><option>ST4</option><option>ST5</option>
+                <option>ST6</option><option>ST7</option><option>ST8</option>
+                <option>Fellow</option><option>SAS</option><option>Other</option>
+              </select>
+            </div>
+            <div>
+              <button class="btn primary" id="ciBtn" style="width:100%">Mark present</button>
+            </div>
+          </div>
+          <p class="helper">Logs the trainee as present for the active session, recording the grade they're at this rotation.</p>
+          <div id="ciRecent" style="margin-top:14px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== EXCUSED ABSENCES ===== -->
+  <section class="panel" id="panel-excused">
+    <h2 class="panel-title">Excused absences</h2>
+    <p class="panel-lede">Declared absences (leave, on-call, sickness, study leave) are removed from the denominator, so a missed-but-excused session doesn't count against the trainee's adjusted attendance.</p>
+    <div class="card pad" style="margin-bottom:20px">
+      <div class="inline-form">
+        <div>
+          <label class="fld">Trainee</label>
+          <select id="exTrainee"></select>
+        </div>
+        <div>
+          <label class="fld">Session</label>
+          <select id="exSession"></select>
+        </div>
+        <div>
+          <label class="fld">Reason</label>
+          <select id="exReason">
+            <option>Annual Leave</option>
+            <option>On-call commitments</option>
+            <option>Post on-call rest</option>
+            <option>Sickness</option>
+            <option>Study Leave (Exam/course)</option>
+            <option>LTFT day</option>
+            <option>Theatre commitments</option>
+            <option>Emailed apology</option>
+            <option>Childcare</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div><button class="btn clay" id="exAdd" style="width:100%">Add excuse</button></div>
+      </div>
+      <div class="field" id="exOtherWrap" style="display:none;margin-top:12px;margin-bottom:0">
+        <label class="fld">Specify reason</label>
+        <input id="exOther" placeholder="Type the reason…">
+      </div>
+    </div>
+    <div class="card"><div id="exList"></div></div>
+  </section>
+
+  <!-- ===== LONG-TERM STATUS ===== -->
+  <section class="panel" id="panel-status">
+    <h2 class="panel-title">Long-term status</h2>
+    <p class="panel-lede">Set when a trainee completes training (CCT), goes on maternity / paternity leave, out-of-programme (OOP/PhD), or transfers (IDT). Sessions outside their active window are marked “not eligible” and excluded from both numerator and denominator.</p>
+    <div class="card pad" style="margin-bottom:20px">
+      <div id="stEditBanner" style="display:none;margin-bottom:14px;padding:8px 12px;background:#f0f4ee;border:1px solid var(--moss);border-radius:8px;font-size:13px;font-weight:600;color:var(--moss-deep)"></div>
+      <div class="grid2">
+        <div class="field">
+          <label class="fld">Trainee</label>
+          <select id="stTrainee"></select>
+        </div>
+        <div class="field">
+          <label class="fld">Status type</label>
+          <select id="stType">
+            <option value="active">Active</option>
+            <option value="cct">CCT (completes training)</option>
+            <option value="mat">Maternity / Paternity leave</option>
+            <option value="oop">Out of programme (PhD/OOP)</option>
+            <option value="idt_in">Interdeanery transfer (IN – joins)</option>
+            <option value="idt_out">Interdeanery transfer (OUT – leaves)</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2" id="stDates">
+        <div class="field">
+          <label class="fld" id="stStartLbl">Start (month)</label>
+          <div class="month-input" data-monthpicker><input type="text" id="stStart" placeholder="e.g. Jan 2026" autocomplete="off"><button type="button" class="month-cal-btn" aria-label="Open calendar">📅</button></div>
+        </div>
+        <div class="field" id="stEndField">
+          <label class="fld" id="stEndLbl">End (month)</label>
+          <div class="month-input" data-monthpicker><input type="text" id="stEnd" placeholder="e.g. Mar 2026" autocomplete="off"><button type="button" class="month-cal-btn" aria-label="Open calendar">📅</button></div>
+        </div>
+      </div>
+      <p class="helper" id="stHelper"></p>
+      <div class="row-actions" style="margin-top:6px">
+        <button class="btn primary" id="stSave">Save status</button>
+        <button class="btn ghost" id="stCancel" style="display:none">Cancel edit</button>
+      </div>
+    </div>
+    <div class="card"><div id="stList"></div></div>
+  </section>
+
+  <!-- ===== MANAGE ===== -->
+  <section class="panel" id="panel-manage">
+    <h2 class="panel-title">Trainees &amp; sessions</h2>
+    <p class="panel-lede">The roster of trainees and the calendar of monthly teaching days. Everything above is built from these two lists.</p>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad">
+        <label class="fld">Add trainee</label>
+        <div class="inline-form" style="grid-template-columns:1fr auto">
+          <div><input id="trName" placeholder="Full name"></div>
+          <div><button class="btn primary" id="trAdd">Add</button></div>
+        </div>
+        <p class="helper">Grade is captured each time a trainee checks in, since it changes between rotations.</p>
+        <div id="trList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
+      </div>
+      <div class="card pad">
+        <label class="fld">Add teaching session</label>
+        <div class="inline-form" style="grid-template-columns:.9fr 1.4fr auto">
+          <div><div class="month-input" data-monthpicker><input type="text" id="seMonth" placeholder="e.g. Jun 2026" autocomplete="off"><button type="button" class="month-cal-btn" aria-label="Open calendar">📅</button></div></div>
+          <div><input id="seTitle" placeholder="Title e.g. Paediatric ENT WYT"></div>
+          <div><button class="btn primary" id="seAdd">Add</button></div>
+        </div>
+        <div id="seList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
+      </div>
+    </div>
+    <div class="danger-zone">
+      <div class="row-actions" style="justify-content:space-between">
+        <div>
+          <strong>Data</strong>
+          <p class="helper" style="margin-top:2px">Everything is stored locally in this browser. Back it up or move it between machines here.</p>
+        </div>
+        <div class="row-actions">
+          <button class="btn ghost sm" id="backupBtn">Download backup</button>
+          <label class="btn ghost sm" style="cursor:pointer">Restore…<input type="file" id="restoreInp" accept=".json" hidden></label>
+          <button class="btn ghost sm" id="seedBtn">Load sample cohort</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== KIOSK / FORM VIEW (QR target) ===== -->
+<div class="kiosk-card card pad" id="kioskCard" style="display:none">
+  <h2 class="panel-title" style="margin-bottom:2px">Sign in</h2>
+  <p class="panel-lede" id="kioskSess" style="margin-bottom:18px"></p>
+  <div class="field">
+    <label class="fld">Your name</label>
+    <select id="kTrainee"></select>
+  </div>
+  <div class="field">
+    <label class="fld">Your grade this rotation</label>
+    <select id="kGrade">
+      <option value="">Select grade…</option>
+      <option>ST3</option><option>ST4</option><option>ST5</option>
+      <option>ST6</option><option>ST7</option><option>ST8</option>
+      <option>Fellow</option><option>SAS</option><option>Other</option>
+    </select>
+  </div>
+  <button class="btn primary" id="kSubmit" style="width:100%;padding:13px;font-size:15px">I'm here — sign me in</button>
+  <div id="kDone" style="display:none;text-align:center;margin-top:22px">
+    <div style="font-size:44px">✓</div>
+    <p style="font-weight:600;margin-top:6px" id="kDoneMsg"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="cellTip"></div>
+
+<script>
+/* ============================================================
+   ENT Teaching Register — local-first attendance tracker
+   Storage: window.storage (persists across sessions) with a
+   localStorage fallback so it also works opened as a file.
+   ============================================================ */
+
+const STORE_KEY = 'ent_register_v1';
+const hasWindowStorage = typeof window.storage !== 'undefined';
+
+/* ---- storage shim ---- */
+async function loadDB(){
+  try{
+    if(hasWindowStorage){
+      const r = await window.storage.get(STORE_KEY);
+      return r ? JSON.parse(r.value) : null;
+    }
+  }catch(e){ /* key missing */ }
+  try{ const ls = localStorage.getItem(STORE_KEY); return ls?JSON.parse(ls):null; }catch(e){ return null; }
+}
+async function saveDB(){
+  const payload = JSON.stringify(DB);
+  try{ if(hasWindowStorage) await window.storage.set(STORE_KEY, payload); }catch(e){}
+  try{ localStorage.setItem(STORE_KEY, payload); }catch(e){}
+}
+
+/* ---- model ----
+   DB = {
+     trainees:[{id,name}],
+     sessions:[{id,month:'2026-01',title}],
+     attendance:{ "traineeId|sessionId": {grade:'ST6'} | true },  // true = legacy present
+     excused:[{id,trainee,session,reason,ts}],
+     status:[{id,trainee,type,start:'2026-02',end:'2026-05'|null}]
+   }
+   Grade is captured per check-in (it changes each rotation), not on the trainee.
+   Status semantics for eligibility of a session month M (start/end are 'YYYY-MM' or null):
+     active  -> eligible always (baseline)
+     cct     -> training ends. Ineligible for M after the end month (end falls back to start).
+     idt_out -> transfers out of deanery. Ineligible for M >= transfer month (start, falls back to end).
+     idt_in  -> joins deanery. Ineligible for M before the arrival month (start, falls back to end).
+     mat/oop -> a leave window [start..end]:
+                  both set     -> ineligible when start <= M <= end
+                  start only   -> ineligible when M >= start (indefinite / ongoing)
+                  end only     -> ineligible when M <= end (joined/returned: count only after end)
+                  neither      -> treated as ongoing from the first session
+*/
+let DB = null;
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+
+/* ============================================================
+   MONTH PICKER  — parse flexible typed input -> 'YYYY-MM',
+   plus a click calendar. Display uses the browser locale's
+   "Mon YYYY" format (e.g. "Jan 2026").
+   ============================================================ */
+const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_ABBR=MONTH_NAMES.map(m=>m.slice(0,3));
+// Normalise many typed formats to 'YYYY-MM' (or '' if unparseable)
+function parseMonth(raw){
+  if(!raw) return '';
+  let s=String(raw).trim().toLowerCase().replace(/[.,]/g,' ').replace(/\s+/g,' ').trim();
+  if(!s) return '';
+  let m=s.match(/^(\d{4})[-/ ](\d{1,2})$/);                 // YYYY-MM / YYYY/MM
+  if(m){ const mo=+m[2]; if(mo>=1&&mo<=12) return m[1]+'-'+String(mo).padStart(2,'0'); }
+  m=s.match(/^(\d{1,2})[-/ ](\d{4})$/);                     // MM-YYYY / MM/YYYY
+  if(m){ const mo=+m[1]; if(mo>=1&&mo<=12) return m[2]+'-'+String(mo).padStart(2,'0'); }
+  m=s.match(/^(\d{1,2})[-/ ](\d{2})$/);                     // MM/YY (2-digit year -> 2000s)
+  if(m){ const mo=+m[1]; if(mo>=1&&mo<=12) return '20'+m[2]+'-'+String(mo).padStart(2,'0'); }
+  const names=MONTH_NAMES.map((n,i)=>[n,i]).concat(MONTH_ABBR.map((n,i)=>[n,i])).concat([['sept',8]]);
+  for(const [nm0,idx] of names){                             // "jan 2026", "2026 march", "sept 26"
+    const nm=nm0.toLowerCase();
+    const re1=new RegExp('^'+nm+'[a-z]* (\\d{2,4})$');
+    const re2=new RegExp('^(\\d{2,4}) '+nm+'[a-z]*$');
+    let mm=s.match(re1)||s.match(re2);
+    if(mm){ let y=mm[1]; if(y.length===2) y='20'+y; return y+'-'+String(idx+1).padStart(2,'0'); }
+  }
+  m=s.match(/^(\d{4})(\d{2})$/);                            // YYYYMM
+  if(m){ const mo=+m[2]; if(mo>=1&&mo<=12) return m[1]+'-'+m[2]; }
+  return '';
+}
+// 'YYYY-MM' -> display string in system locale, e.g. "Jan 2026"
+function fmtMonth(val){
+  if(!val) return '';
+  const [y,mo]=val.split('-').map(Number);
+  if(!y||!mo) return '';
+  try{ return new Date(y,mo-1,1).toLocaleDateString(undefined,{month:'short',year:'numeric'}); }
+  catch(e){ return MONTH_ABBR[mo-1]+' '+y; }
+}
+// reformat an input's text to the system display format if it parses
+function normaliseMonthInput(input){
+  const norm=parseMonth(input.value);
+  input.dataset.value = norm;
+  input.value = norm ? fmtMonth(norm) : input.value;
+}
+function monthValue(input){ return input.dataset.value || parseMonth(input.value) || ''; }
+function setMonthValue(input,val){ input.dataset.value=val||''; input.value=val?fmtMonth(val):''; }
+
+let openMonthPop=null;
+function closeMonthPop(){ if(openMonthPop){ openMonthPop.remove(); openMonthPop=null; document.removeEventListener('mousedown',monthOutside); } }
+function monthOutside(e){ if(openMonthPop && !openMonthPop.contains(e.target) && !e.target.closest('.month-input')) closeMonthPop(); }
+function buildMonthPop(wrap,input){
+  closeMonthPop();
+  const cur=monthValue(input);
+  let year = cur ? +cur.split('-')[0] : new Date().getFullYear();
+  const selMonth = cur ? +cur.split('-')[1] : null;
+  const selYear  = cur ? +cur.split('-')[0] : null;
+  const pop=document.createElement('div'); pop.className='month-pop open';
+  function render(){
+    pop.innerHTML=
+      `<div class="yr"><button data-yr="-1">‹</button><b>${year}</b><button data-yr="1">›</button></div>`+
+      `<div class="month-grid">`+
+      MONTH_ABBR.map((m,i)=>`<button data-mo="${i+1}" class="${(selYear===year&&selMonth===i+1)?'sel':''}">${m}</button>`).join('')+
+      `</div>`+
+      `<div class="pop-foot"><button data-act="clear">Clear</button><button data-act="close">Done</button></div>`;
+    pop.querySelectorAll('[data-yr]').forEach(b=>b.onclick=()=>{year+=+b.dataset.yr;render();});
+    pop.querySelectorAll('[data-mo]').forEach(b=>b.onclick=()=>{
+      setMonthValue(input, year+'-'+String(+b.dataset.mo).padStart(2,'0'));
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+      closeMonthPop();
+    });
+    pop.querySelector('[data-act="clear"]').onclick=()=>{ setMonthValue(input,''); input.dispatchEvent(new Event('change',{bubbles:true})); closeMonthPop(); };
+    pop.querySelector('[data-act="close"]').onclick=()=>closeMonthPop();
+  }
+  render();
+  wrap.appendChild(pop); openMonthPop=pop;
+  setTimeout(()=>document.addEventListener('mousedown',monthOutside),0);
+}
+function initMonthPickers(){
+  document.querySelectorAll('[data-monthpicker]').forEach(wrap=>{
+    const input=wrap.querySelector('input');
+    const btn=wrap.querySelector('.month-cal-btn');
+    btn.onclick=()=>{ if(openMonthPop && wrap.contains(openMonthPop)){ closeMonthPop(); } else { buildMonthPop(wrap,input); } };
+    input.addEventListener('blur',()=>normaliseMonthInput(input));
+    input.addEventListener('keydown',e=>{ if(e.key==='Enter'){ normaliseMonthInput(input); input.dispatchEvent(new Event('change',{bubbles:true})); } });
+  });
+}
+function monthOf(s){ return s.month; }
+function sessionsSorted(){ return [...DB.sessions].sort((a,b)=>a.month.localeCompare(b.month)); }
+function findTrainee(id){ return DB.trainees.find(t=>t.id===id); }
+function findSession(id){ return DB.sessions.find(s=>s.id===id); }
+function attKey(t,s){ return t+'|'+s; }
+function isPresent(t,s){ return !!DB.attendance[attKey(t,s)]; }
+function gradeAt(t,s){ const v=DB.attendance[attKey(t,s)]; return (v&&typeof v==='object'&&v.grade)?v.grade:''; }
+function latestGrade(traineeId){
+  // most recent session (by month) the trainee attended with a recorded grade
+  const sess=sessionsSorted();
+  for(let i=sess.length-1;i>=0;i--){ const g=gradeAt(traineeId,sess[i].id); if(g) return g; }
+  return '';
+}
+
+/* ---- eligibility & calculation engine ---- */
+function statusFor(traineeId){ return DB.status.filter(s=>s.trainee===traineeId); }
+
+function isEligible(traineeId, sessMonth){
+  // default eligible; a status row can switch it off
+  for(const st of statusFor(traineeId)){
+    if(st.type==='active') continue;
+    if(st.type==='cct'){
+      const m = st.end || st.start;            // CCT month
+      if(m && sessMonth > m) return false;     // ineligible after training ends
+    }
+    else if(st.type==='idt_out'){
+      const m = st.start || st.end;            // transfer-out month
+      if(m && sessMonth >= m) return false;    // ineligible from transfer onward
+    }
+    else if(st.type==='idt_in'){
+      const m = st.start || st.end;            // arrival month
+      if(m && sessMonth < m) return false;     // ineligible before arrival
+    }
+    else if(st.type==='mat' || st.type==='oop'){
+      // leave window [start..end]; missing bound = open on that side
+      const afterStart = st.start ? sessMonth >= st.start : true;
+      const beforeEnd  = st.end   ? sessMonth <= st.end   : true;
+      if(afterStart && beforeEnd) return false;
+    }
+  }
+  return true;
+}
+
+function isExcused(traineeId, sessMonth){
+  return DB.excused.some(e=>e.trainee===traineeId && findSession(e.session) && findSession(e.session).month===sessMonth);
+}
+
+function cellState(traineeId, sess){
+  if(!isEligible(traineeId, sess.month)) return 'na';
+  if(DB.attendance[attKey(traineeId,sess.id)]) return 'present';
+  if(isExcused(traineeId, sess.month)) return 'excused';
+  return 'absent';
+}
+
+function computeRow(trainee){
+  const sess = sessionsSorted();
+  let attended=0, total=0, excused=0, eligible=0;
+  const cells=[];
+  for(const s of sess){
+    const st = cellState(trainee.id, s);
+    cells.push({sess:s, state:st});
+    total++;                                   // every defined session
+    if(st==='na') continue;
+    eligible++;                                // eligible sessions
+    if(st==='present') attended++;
+    if(st==='excused') excused++;
+  }
+  const adjDenom = eligible - excused;          // excused removed from denominator
+  const rawPct = total? Math.round(attended/total*100):0;
+  const adjPct = adjDenom>0? Math.round(attended/adjDenom*100): (eligible===0? null : 0);
+  return {trainee,cells,attended,total,excused,eligible,adjDenom,rawPct,adjPct};
+}
+
+function activeStatusType(traineeId){
+  const rows = statusFor(traineeId).filter(s=>s.type!=='active');
+  if(!rows.length) return null;
+  return rows[0]; // first non-active
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+let sortKey='name', sortDir=1;
+
+function pctColor(p){
+  if(p===null) return 'var(--muted)';
+  if(p>=80) return 'var(--good)';
+  if(p>=60) return 'var(--warn)';
+  return 'var(--bad)';
+}
+
+/* custom hover tooltip for attendance cells (delegated, attached once) */
+let cellTipWired=false;
+function attachCellTip(tb){
+  if(cellTipWired) return;          // delegation survives re-renders
+  cellTipWired=true;
+  const tip=document.getElementById('cellTip');
+  const stateClass={Attended:'s-present',Excused:'s-excused',Missed:'s-absent','Not eligible':'s-na'};
+  function place(e){
+    const pad=14, w=tip.offsetWidth, h=tip.offsetHeight;
+    let x=e.clientX+pad, y=e.clientY+pad;
+    if(x+w>innerWidth-8) x=e.clientX-w-pad;
+    if(y+h>innerHeight-8) y=e.clientY-h-pad;
+    tip.style.left=x+'px'; tip.style.top=y+'px';
+  }
+  tb.addEventListener('mouseover',e=>{
+    const d=e.target.closest('.dot'); if(!d||!tb.contains(d)) return;
+    const grade=d.dataset.grade?` · ${d.dataset.grade}`:'';
+    tip.innerHTML=
+      `<div class="tip-sess">${d.dataset.sess}</div>`+
+      `<div class="tip-month">${d.dataset.month}</div>`+
+      `<div class="tip-row"><span class="tip-state ${stateClass[d.dataset.state]||''}"></span>`+
+      `${d.dataset.name} — ${d.dataset.state}${grade}</div>`;
+    tip.classList.add('show'); place(e);
+  });
+  tb.addEventListener('mousemove',e=>{ if(tip.classList.contains('show')) place(e); });
+  tb.addEventListener('mouseout',e=>{
+    const d=e.target.closest('.dot'); if(d) tip.classList.remove('show');
+  });
+}
+
+function renderDash(){
+  const q = (document.getElementById('dashSearch').value||'').toLowerCase();
+  const rows = DB.trainees.map(computeRow)
+    .filter(r=>r.trainee.name.toLowerCase().includes(q));
+
+  rows.sort((a,b)=>{
+    let A,B;
+    if(sortKey==='name'){A=a.trainee.name;B=b.trainee.name;}
+    else if(sortKey==='raw'){A=a.rawPct;B=b.rawPct;}
+    else if(sortKey==='adj'){A=a.adjPct??-1;B=b.adjPct??-1;}
+    else {A=a.attended;B=b.attended;}
+    if(A<B)return -1*sortDir; if(A>B)return 1*sortDir; return 0;
+  });
+
+  const sess = sessionsSorted();
+  const thead = document.querySelector('#dashTable thead');
+  const arrow = k => sortKey===k ? `<span class="arrow">${sortDir>0?'▲':'▼'}</span>` : `<span class="arrow">↕</span>`;
+  thead.innerHTML = `<tr>
+    <th data-sort="name">Trainee ${arrow('name')}</th>
+    <th class="no-sort">Status</th>
+    <th class="no-sort">Sessions</th>
+    <th data-sort="att">Att/Elig ${arrow('att')}</th>
+    <th data-sort="raw">Raw % ${arrow('raw')}</th>
+    <th data-sort="adj">Adjusted % ${arrow('adj')}</th>
+  </tr>`;
+  thead.querySelectorAll('th[data-sort]').forEach(th=>{
+    th.onclick=()=>{const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=1;} renderDash();};
+  });
+
+  const tb = document.querySelector('#dashTable tbody');
+  if(!rows.length){ tb.innerHTML=`<tr><td colspan="6"><div class="empty">No trainees yet. Add some under “Trainees &amp; sessions”, or load the sample cohort.</div></td></tr>`; return; }
+
+  tb.innerHTML = rows.map(r=>{
+    const stat = activeStatusType(r.trainee.id);
+    const badge = stat
+      ? `<span class="badge ${stat.type}">${{cct:'CCT',mat:'Mat/Pat',oop:'OOP',idt_in:'IDT in',idt_out:'IDT out'}[stat.type]}${(stat.start||stat.end)?' · '+(stat.start||stat.end):''}</span>`
+      : `<span class="badge active">Active</span>`;
+    const dots = r.cells.map(c=>{
+      const sym = c.state==='present'?'✓':c.state==='excused'?'e':c.state==='na'?'–':'';
+      const stateLabel = {present:'Attended',excused:'Excused',na:'Not eligible',absent:'Missed'}[c.state];
+      const g = c.state==='present'? gradeAt(r.trainee.id,c.sess.id):'';
+      return `<span class="dot ${c.state}" data-t="${r.trainee.id}" data-s="${c.sess.id}"`+
+        ` data-month="${c.sess.month}" data-sess="${c.sess.title.replace(/"/g,'&quot;')}"`+
+        ` data-name="${r.trainee.name.replace(/"/g,'&quot;')}" data-state="${stateLabel}" data-grade="${g}">${sym}</span>`;
+    }).join('');
+    const adj = r.adjPct===null?'—':r.adjPct+'%';
+    return `<tr>
+      <td class="name-cell">${r.trainee.name}<span class="grade-tag">${latestGrade(r.trainee.id)}</span></td>
+      <td>${badge}</td>
+      <td><div class="sess-cells">${dots}</div></td>
+      <td style="font-variant-numeric:tabular-nums">${r.attended}/${r.adjDenom>0?r.adjDenom:r.eligible}</td>
+      <td><span class="pct" style="color:${pctColor(r.rawPct)}">${r.rawPct}%</span>
+          <div class="pct-bar"><span style="width:${r.rawPct}%;background:${pctColor(r.rawPct)}"></span></div></td>
+      <td><span class="pct" style="color:${pctColor(r.adjPct)}">${adj}</span>
+          <div class="pct-bar"><span style="width:${r.adjPct??0}%;background:${pctColor(r.adjPct)}"></span></div></td>
+    </tr>`;
+  }).join('');
+
+  // click a dot to toggle present/absent
+  tb.querySelectorAll('.dot').forEach(d=>{
+    if(d.classList.contains('na')) return;
+    d.onclick=async()=>{
+      const k=attKey(d.dataset.t,d.dataset.s);
+      if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
+      await saveDB(); renderAll();
+    };
+  });
+
+  attachCellTip(tb);
+
+  // stat strip
+  const elig = rows.filter(r=>r.eligible>0);
+  const avgAdj = elig.length? Math.round(elig.reduce((s,r)=>s+(r.adjPct||0),0)/elig.length):0;
+  const avgRaw = rows.length? Math.round(rows.reduce((s,r)=>s+r.rawPct,0)/rows.length):0;
+  const full = elig.filter(r=>r.adjPct===100).length;
+  const below = elig.filter(r=>r.adjPct!==null&&r.adjPct<60).length;
+  document.getElementById('statStrip').innerHTML = `
+    <div class="stat"><div class="n">${DB.trainees.length}</div><div class="l">Trainees</div></div>
+    <div class="stat"><div class="n">${DB.sessions.length}</div><div class="l">Teaching days</div></div>
+    <div class="stat"><div class="n">${avgAdj}%</div><div class="l">Mean adjusted</div></div>
+    <div class="stat"><div class="n">${avgRaw}%</div><div class="l">Mean raw</div></div>
+    <div class="stat"><div class="n">${full}</div><div class="l">At 100% adjusted</div></div>
+    <div class="stat accent"><div class="n">${below}</div><div class="l">Below 60%</div></div>`;
+}
+
+/* ---- check-in / QR ---- */
+let activeSession = null;
+function renderCheckin(){
+  const sess = sessionsSorted();
+  if(!activeSession && sess.length) activeSession = sess[sess.length-1].id;
+  const picker = document.getElementById('sessPicker');
+  picker.innerHTML = sess.length? sess.slice().reverse().map(s=>`
+    <label class="sess-radio ${s.id===activeSession?'sel':''}">
+      <input type="radio" name="sess" value="${s.id}" ${s.id===activeSession?'checked':''}>
+      <span><strong>${s.month}</strong> · ${s.title}</span>
+    </label>`).join('') : `<div class="empty">Add a session first.</div>`;
+  picker.querySelectorAll('input').forEach(i=>i.onchange=()=>{activeSession=i.value;renderCheckin();drawQR();});
+
+  const sel = document.getElementById('ciTrainee');
+  sel.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name))
+    .map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+
+  const s = findSession(activeSession);
+  document.getElementById('qrSessLabel').textContent = s? `${s.month} · ${s.title}` : '—';
+  drawQR();
+  renderRecentCheckins();
+}
+function renderRecentCheckins(){
+  const s = findSession(activeSession); if(!s){document.getElementById('ciRecent').innerHTML='';return;}
+  const present = DB.trainees.filter(t=>DB.attendance[attKey(t.id,s.id)]);
+  document.getElementById('ciRecent').innerHTML = present.length
+    ? `<div class="helper" style="margin-bottom:6px">${present.length} signed in</div>` +
+      `<div class="pill-row">${present.map(t=>{const g=gradeAt(t.id,s.id);return `<span class="badge active">${t.name}${g?' · '+g:''}</span>`;}).join('')}</div>`
+    : `<div class="helper">No check-ins yet for this session.</div>`;
+}
+function drawQR(){
+  const box=document.getElementById('qrcode'); box.innerHTML='';
+  if(!activeSession) return;
+  const base = location.href.split('?')[0].split('#')[0];
+  const url = base + '?form=' + encodeURIComponent(activeSession);
+  new QRCode(box,{text:url,width:230,height:230,colorDark:'#2c4d39',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+  box.dataset.url = url;
+}
+
+/* ---- excused ---- */
+function fillTraineeSelect(el){ el.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.id}">${t.name}</option>`).join(''); }
+function fillSessionSelect(el){ el.innerHTML = sessionsSorted().reverse().map(s=>`<option value="${s.id}">${s.month} · ${s.title}</option>`).join(''); }
+function renderExcused(){
+  fillTraineeSelect(document.getElementById('exTrainee'));
+  fillSessionSelect(document.getElementById('exSession'));
+  const list = document.getElementById('exList');
+  const items = DB.excused.slice().sort((a,b)=>b.ts-a.ts);
+  list.innerHTML = items.length? items.map(e=>{
+    const t=findTrainee(e.trainee), s=findSession(e.session);
+    if(!t||!s) return '';
+    return `<div class="list-item">
+      <div><div class="li-main">${t.name}</div><div class="li-sub">${s.month} · ${s.title} — ${e.reason}</div></div>
+      <span class="kebab" data-del="${e.id}">Remove</span></div>`;
+  }).join('') : `<div class="empty">No excused absences logged. Declared leave or on-call commitments added here are removed from the denominator.</div>`;
+  list.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{DB.excused=DB.excused.filter(x=>x.id!==b.dataset.del);await saveDB();renderAll();toast('Excuse removed');});
+}
+
+/* ---- status ---- */
+let editingStatusId=null;
+function statusRangeText(s){
+  if(s.type==='cct'){ const m=s.end||s.start; return m?`completes after ${m}`:'completes (month not set)'; }
+  if(s.type==='idt_out'){ const m=s.start||s.end; return m?`leaves deanery from ${m}`:'leaves deanery (month not set)'; }
+  if(s.type==='idt_in'){ const m=s.start||s.end; return m?`joins deanery from ${m}`:'joins deanery (month not set)'; }
+  // mat / oop
+  if(s.start && s.end) return `excluded ${s.start} → ${s.end}`;
+  if(s.start && !s.end) return `excluded from ${s.start} → ongoing`;
+  if(!s.start && s.end) return `excluded up to ${s.end}, counts after`;
+  return 'excluded (no dates set) → ongoing';
+}
+function renderStatus(){
+  const stSel=document.getElementById('stTrainee');
+  const keepTrainee = editingStatusId ? stSel.value : null;
+  fillTraineeSelect(stSel);
+  if(keepTrainee) stSel.value=keepTrainee;
+  const list=document.getElementById('stList');
+  const items=DB.status.filter(s=>s.type!=='active');
+  list.innerHTML = items.length? items.map(s=>{
+    const t=findTrainee(s.trainee); if(!t)return'';
+    const lbl={cct:'CCT',mat:'Maternity/Paternity',oop:'Out of programme',idt_in:'Interdeanery transfer (IN)',idt_out:'Interdeanery transfer (OUT)'}[s.type];
+    return `<div class="list-item">
+      <div><div class="li-main">${t.name} <span class="badge ${s.type}">${lbl}</span></div>
+      <div class="li-sub">${statusRangeText(s)}</div></div>
+      <div class="row-actions">
+        <span class="kebab" data-edit="${s.id}">Edit</span>
+        <span class="kebab" data-del="${s.id}">Remove</span>
+      </div></div>`;
+  }).join('') : `<div class="empty">No long-term statuses set. Everyone is treated as active across all sessions.</div>`;
+  list.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Remove this status? The trainee will count for all sessions again.'))return;
+    if(editingStatusId===b.dataset.del) cancelStatusEdit();
+    DB.status=DB.status.filter(x=>x.id!==b.dataset.del);await saveDB();renderAll();toast('Status removed');
+  });
+  list.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>loadStatusForEdit(b.dataset.edit));
+  if(!editingStatusId) updateStatusHelper();
+}
+function loadStatusForEdit(id){
+  const s=DB.status.find(x=>x.id===id); if(!s)return;
+  editingStatusId=id;
+  document.getElementById('stTrainee').value=s.trainee;
+  document.getElementById('stType').value=s.type;
+  setMonthValue(document.getElementById('stStart'),s.start||'');
+  setMonthValue(document.getElementById('stEnd'),s.end||'');
+  updateStatusHelper();
+  const t=findTrainee(s.trainee);
+  const banner=document.getElementById('stEditBanner');
+  banner.style.display='block';
+  banner.textContent=`Editing status for ${t?t.name:'trainee'} — change the fields and Save, or Cancel.`;
+  document.getElementById('stSave').textContent='Save changes';
+  document.getElementById('stCancel').style.display='inline-block';
+  document.getElementById('panel-status').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function cancelStatusEdit(){
+  editingStatusId=null;
+  document.getElementById('stEditBanner').style.display='none';
+  document.getElementById('stSave').textContent='Save status';
+  document.getElementById('stCancel').style.display='none';
+  setMonthValue(document.getElementById('stStart'),'');
+  setMonthValue(document.getElementById('stEnd'),'');
+  document.getElementById('stType').value='active';
+  updateStatusHelper();
+}
+function updateStatusHelper(){
+  const type=document.getElementById('stType').value;
+  const h=document.getElementById('stHelper');
+  const startLbl=document.getElementById('stStartLbl');
+  const endLbl=document.getElementById('stEndLbl');
+  const startField=document.getElementById('stStart').closest('.field');
+  const endField=document.getElementById('stEndField');
+  // [startLabel, endLabel, helper, showStart, showEnd]
+  const map={
+    active:['—','—','This trainee counts for every session.',false,false],
+    cct:['—','CCT month','Sessions after the CCT month are excluded. Leave blank if not yet known.',false,true],
+    idt_out:['Transfer-out month','—','Trainee leaves the deanery. Sessions from this month onward are excluded.',true,false],
+    idt_in:['Arrival month','—','Trainee joins the deanery new. Sessions before this month are excluded; they count from this month on.',true,false],
+    mat:['Leave start (month)','Leave end (month)','Excluded during the leave window. No end = ongoing. No start = excluded up to the end month, then counts again (returning from leave).',true,true],
+    oop:['OOP start (month)','OOP end (month)','Out-of-programme months are excluded. No end = ongoing. No start = excluded up to the end month, then counts again (returning to programme).',true,true]
+  };
+  const [sl,el,desc,showStart,showEnd]=map[type];
+  startLbl.textContent=sl; endLbl.textContent=el; h.textContent=desc;
+  startField.style.display=showStart?'block':'none';
+  endField.style.display=showEnd?'block':'none';
+}
+
+/* ---- manage ---- */
+function renderManage(){
+  const tl=document.getElementById('trList');
+  tl.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`
+    <div class="list-item"><div><span class="li-main">${t.name}</span> <span class="grade-tag">${latestGrade(t.id)}</span></div>
+    <span class="kebab" data-deltr="${t.id}">✕</span></div>`).join('') || `<div class="empty">No trainees.</div>`;
+  tl.querySelectorAll('[data-deltr]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.deltr; const t=findTrainee(id);
+    if(!confirm(`Remove ${t?t.name:'this trainee'}? This deletes their attendance, excuses and status. This can't be undone.`)) return;
+    DB.trainees=DB.trainees.filter(t=>t.id!==id);
+    DB.excused=DB.excused.filter(e=>e.trainee!==id);
+    DB.status=DB.status.filter(s=>s.trainee!==id);
+    Object.keys(DB.attendance).forEach(k=>{if(k.startsWith(id+'|'))delete DB.attendance[k];});
+    await saveDB();renderAll();toast('Trainee removed');
+  });
+  const sl=document.getElementById('seList');
+  sl.innerHTML = sessionsSorted().reverse().map(s=>`
+    <div class="list-item"><div><span class="li-main">${s.month}</span> <span class="li-sub">${s.title}</span></div>
+    <span class="kebab" data-delse="${s.id}">✕</span></div>`).join('') || `<div class="empty">No sessions.</div>`;
+  sl.querySelectorAll('[data-delse]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.delse; const s=findSession(id);
+    if(!confirm(`Delete the ${s?s.month+' · '+s.title:'session'} teaching day? All check-ins and excuses for it will be removed.`)) return;
+    DB.sessions=DB.sessions.filter(s=>s.id!==id);
+    DB.excused=DB.excused.filter(e=>e.session!==id);
+    Object.keys(DB.attendance).forEach(k=>{if(k.endsWith('|'+id))delete DB.attendance[k];});
+    if(activeSession===id)activeSession=null;
+    await saveDB();renderAll();toast('Session removed');
+  });
+}
+
+function renderAll(){
+  document.getElementById('cohortPill').textContent =
+    `${DB.trainees.length} trainees · ${DB.sessions.length} teaching days`;
+  renderDash(); renderCheckin(); renderExcused(); renderStatus(); renderManage();
+}
+
+/* ---- toast ---- */
+let toastT;
+function toast(msg){
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2200);
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+function wire(){
+  document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+  });
+  document.getElementById('dashSearch').oninput=renderDash;
+
+  document.getElementById('ciBtn').onclick=async()=>{
+    const t=document.getElementById('ciTrainee').value;
+    const g=document.getElementById('ciGrade').value;
+    if(!t||!activeSession)return toast('Pick a session and trainee');
+    DB.attendance[attKey(t,activeSession)]={grade:g}; await saveDB(); renderAll(); toast(findTrainee(t).name+' marked present');
+  };
+  document.getElementById('copyLink').onclick=()=>{
+    const url=document.getElementById('qrcode').dataset.url||'';
+    navigator.clipboard?.writeText(url); toast('Form link copied');
+  };
+
+  const exReasonSel=document.getElementById('exReason');
+  const exOtherWrap=document.getElementById('exOtherWrap');
+  exReasonSel.onchange=()=>{ exOtherWrap.style.display = exReasonSel.value==='Other'?'block':'none'; if(exReasonSel.value==='Other') document.getElementById('exOther').focus(); };
+  document.getElementById('exAdd').onclick=async()=>{
+    const t=document.getElementById('exTrainee').value, s=document.getElementById('exSession').value;
+    let r=exReasonSel.value;
+    if(r==='Other'){
+      const free=document.getElementById('exOther').value.trim();
+      if(!free)return toast('Type the reason for “Other”');
+      r=free;
+    }
+    if(!t||!s)return toast('Pick trainee and session');
+    DB.excused.push({id:uid(),trainee:t,session:s,reason:r,ts:Date.now()});
+    document.getElementById('exOther').value=''; exReasonSel.value='Annual Leave'; exOtherWrap.style.display='none';
+    await saveDB(); renderAll(); toast('Excuse added — denominator updated');
+  };
+
+  document.getElementById('stType').onchange=updateStatusHelper;
+  document.getElementById('stCancel').onclick=()=>cancelStatusEdit();
+  document.getElementById('stSave').onclick=async()=>{
+    const t=document.getElementById('stTrainee').value, type=document.getElementById('stType').value;
+    let start=monthValue(document.getElementById('stStart'))||null, end=monthValue(document.getElementById('stEnd'))||null;
+    if(!t)return toast('Pick a trainee');
+    // only keep dates relevant to the visible fields for this type
+    if(type==='cct'){ start=null; }                 // cct uses end month only
+    if(type==='idt_out'||type==='idt_in'){ end=null; } // idt uses start month only
+    if((type==='mat'||type==='oop') && !start && !end){ return toast('Set a start or end month for the leave'); }
+    if(type==='cct' && !end){ return toast('Set the CCT month'); }
+    if(type==='idt_out' && !start){ return toast('Set the transfer-out month'); }
+    if(type==='idt_in' && !start){ return toast('Set the arrival month'); }
+    if((start&&end) && start>end){ return toast('Start month is after the end month'); }
+    // one status per trainee: drop any existing (or the one being edited)
+    DB.status=DB.status.filter(s=>s.trainee!==t && s.id!==editingStatusId);
+    if(type!=='active') DB.status.push({id:editingStatusId||uid(),trainee:t,type,start,end});
+    const wasEditing=!!editingStatusId;
+    cancelStatusEdit();
+    await saveDB(); renderAll(); toast(wasEditing?'Status updated — attendance recalculated':'Status saved — attendance recalculated');
+  };
+
+  document.getElementById('trAdd').onclick=async()=>{
+    const n=document.getElementById('trName').value.trim();
+    if(!n)return toast('Enter a name');
+    DB.trainees.push({id:uid(),name:n}); document.getElementById('trName').value='';
+    await saveDB(); renderAll(); toast('Trainee added');
+  };
+  document.getElementById('seAdd').onclick=async()=>{
+    const seM=document.getElementById('seMonth');
+    const m=monthValue(seM), ti=document.getElementById('seTitle').value.trim();
+    if(!m||!ti)return toast('Enter a valid month and title');
+    DB.sessions.push({id:uid(),month:m,title:ti});
+    document.getElementById('seTitle').value=''; setMonthValue(seM,'');
+    await saveDB(); renderAll(); toast('Session added');
+  };
+
+  document.getElementById('exportCsv').onclick=exportCsv;
+  document.getElementById('backupBtn').onclick=backup;
+  document.getElementById('restoreInp').onchange=restore;
+  document.getElementById('seedBtn').onclick=async()=>{ if(confirm('Replace current data with the sample cohort from your spreadsheet?')){ DB=seedData(); await saveDB(); renderAll(); toast('Sample cohort loaded'); } };
+}
+
+/* ---- export / backup ---- */
+function exportCsv(){
+  const sess=sessionsSorted();
+  const head=['Name','Latest grade','Status', ...sess.map(s=>s.month+' '+s.title),'Attended','Eligible','Excused','AdjDenom','RawPct','AdjPct'];
+  const lines=[head.join(',')];
+  DB.trainees.map(computeRow).forEach(r=>{
+    const stat=activeStatusType(r.trainee.id);
+    const cells=r.cells.map(c=>{
+      if(c.state==='present'){ const g=gradeAt(r.trainee.id,c.sess.id); return g?'P:'+g:'P'; }
+      return {excused:'E',na:'NA',absent:'A'}[c.state];
+    });
+    lines.push([
+      '"'+r.trainee.name+'"', latestGrade(r.trainee.id), stat?stat.type:'active',
+      ...cells, r.attended, r.eligible, r.excused, r.adjDenom, r.rawPct, r.adjPct??''
+    ].join(','));
+  });
+  dl(new Blob([lines.join('\n')],{type:'text/csv'}),'attendance_export.csv');
+}
+function backup(){ dl(new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}),'ent_register_backup.json'); }
+function restore(e){
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=async()=>{ try{ DB=JSON.parse(r.result); await saveDB(); renderAll(); toast('Data restored'); }catch(err){ toast('Invalid file'); } };
+  r.readAsText(f);
+}
+function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+
+/* ============================================================
+   KIOSK (QR form target)
+   ============================================================ */
+function bootKiosk(sessId){
+  document.body.classList.add('kiosk');
+  document.getElementById('appMain').style.display='none';
+  document.getElementById('mainNav').style.display='none';
+  const card=document.getElementById('kioskCard'); card.style.display='block';
+  const s=findSession(sessId);
+  document.getElementById('kioskSess').textContent = s? `${s.month} · ${s.title}` : 'Session not found';
+  const sel=document.getElementById('kTrainee');
+  sel.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+  document.getElementById('kSubmit').onclick=async()=>{
+    const t=sel.value; const g=document.getElementById('kGrade').value;
+    if(!t||!s)return;
+    if(!g){ toast('Please select your grade'); return; }
+    DB.attendance[attKey(t,sessId)]={grade:g}; await saveDB();
+    document.getElementById('kSubmit').style.display='none';
+    document.querySelectorAll('#kioskCard .field').forEach(f=>f.style.display='none');
+    document.getElementById('kDone').style.display='block';
+    document.getElementById('kDoneMsg').textContent = findTrainee(t).name+' ('+g+'), you\'re signed in for '+s.title+'.';
+  };
+}
+
+/* ============================================================
+   SEED DATA — built from the uploaded spreadsheet
+   ============================================================ */
+function seedData(){
+  const sessions=[
+    {id:'s01',month:'2025-08',title:'Teaching session'},
+    {id:'s02',month:'2025-09',title:'Teaching session'},
+    {id:'s03',month:'2025-10',title:'Teaching session'},
+    {id:'s04',month:'2025-11',title:'Teaching session'},
+    {id:'s05',month:'2026-01',title:'Paediatric ENT WYT'},
+    {id:'s06',month:'2026-03',title:'Balance Wythenshawe'},
+    {id:'s07',month:'2026-04',title:'Paeds ENT Preston'},
+    {id:'s08',month:'2026-05',title:'Paeds ENT Bolton'},
+  ];
+  // attendance grid from Summary_table (1 = present); index aligns to sessions above
+  const grid={
+    'Alex Collingwood':[1,1,0,1,1,1,0,1],'Althwadi Noora':[1,0,1,1,1,0,0,0],
+    'Anastasha Herman':[1,0,1,0,1,1,0,0],'Angus Hotchkies':[1,1,1,1,1,1,0,0],
+    'Arshad Zubair':[1,1,0,1,0,1,1,1],'Atia Khan':[1,1,1,0,1,0,1,1],
+    'Bhargavi Chandrasekar':[0,1,1,0,0,0,0,0],'Ciaran Walsh':[1,1,1,0,0,0,1,1],
+    'Dickson Dewantoro':[1,1,1,1,0,0,1,1],'Ding Yang':[1,0,0,1,1,1,1,1],
+    'Dorota Chudek':[0,1,1,1,1,0,0,0],'Elliot Heward':[1,0,0,0,0,0,0,0],
+    'Emma Hogg':[0,1,1,0,1,0,1,0],'Gabrielle Thompson':[1,0,0,0,0,1,0,0],
+    'George McNally':[1,1,1,1,1,0,1,1],'Guy Shetrit':[1,1,1,1,1,0,0,1],
+    'Hamza Qureshi':[0,1,1,0,1,1,1,0],'Hannah Emerson':[1,1,1,1,1,1,0,1],
+    'Haris Duvnjak':[1,0,1,0,0,1,1,0],'Haseem Raja':[1,1,1,1,1,1,0,1],
+    'Jessica Daniels':[1,0,0,1,1,1,0,0],'Jonny Abbas':[1,0,1,1,1,0,0,0],
+    'Joseph Stansfield':[1,1,1,1,1,1,1,1],'Katharine Hamlett':[1,0,0,0,1,0,0,0],
+    'Kristijonas Milinis':[1,0,0,0,0,0,0,0],'Kristina Lee':[1,1,0,1,0,0,0,0],
+    'Mahmoud Al Aaraj':[1,1,1,1,0,1,0,1],'Michael Chu':[1,1,1,1,0,1,1,1],
+    'Mila Roode':[0,0,0,0,1,1,0,0],'Milad Golsharifi':[1,1,1,1,1,0,0,0],
+    'Mohammed Abdelaziz':[1,1,1,1,1,1,1,1],'Nimisha Vallabh':[0,0,0,0,0,1,0,1],
+    'Randa Ghazal':[0,1,1,0,1,1,0,1],'Rebecca Harrison':[1,1,1,1,1,1,1,0],
+    'Rohan Pinto':[1,0,1,1,0,0,0,0],'Rohma Abrar':[0,0,0,0,0,0,1,1],
+    'Rosie Wright':[1,1,1,1,1,0,1,1],'Rupali Sawant':[1,1,1,1,1,0,0,0],
+    'Sara Mahmood':[1,1,1,1,1,1,1,1],'Sara Timms':[0,0,0,0,0,1,0,1],
+    'Sarah Akbar':[1,1,1,0,0,0,0,1],'Sarah Dawes':[0,0,0,0,1,0,0,0],
+    'Shivani Parihar':[1,1,1,1,1,1,0,0],'Stefan Linton':[1,1,1,1,1,1,1,0],
+    'Tim Davies':[0,0,0,1,0,1,0,0],'Tom Hampton':[1,0,1,1,0,0,0,0],
+    'Wisha Gul':[0,0,0,0,0,1,1,1],
+  };
+  const grades={'Alex Collingwood':'ST3','Althwadi Noora':'ST3','Anastasha Herman':'ST7','Angus Hotchkies':'ST3','Arshad Zubair':'ST7','Atia Khan':'ST5','Bhargavi Chandrasekar':'','Ciaran Walsh':'ST4','Dickson Dewantoro':'ST3','Ding Yang':'ST8','Dorota Chudek':'ST6','Elliot Heward':'','Emma Hogg':'ST6','Gabrielle Thompson':'ST7','George McNally':'ST7','Guy Shetrit':'ST3','Hamza Qureshi':'ST4','Hannah Emerson':'ST8','Haris Duvnjak':'ST3','Haseem Raja':'ST6','Jessica Daniels':'ST7','Jonny Abbas':'ST7','Joseph Stansfield':'ST6','Katharine Hamlett':'ST7','Kristijonas Milinis':'','Kristina Lee':'','Mahmoud Al Aaraj':'ST4','Michael Chu':'ST6','Mila Roode':'ST6','Milad Golsharifi':'ST4','Mohammed Abdelaziz':'ST5','Nimisha Vallabh':'ST7','Randa Ghazal':'ST3','Rebecca Harrison':'ST7','Rohan Pinto':'','Rohma Abrar':'ST4','Rosie Wright':'ST6','Rupali Sawant':'ST8','Sara Mahmood':'ST6','Sara Timms':'ST8','Sarah Akbar':'ST5','Sarah Dawes':'ST8','Shivani Parihar':'ST4','Stefan Linton':'ST6','Tim Davies':'ST6','Tom Hampton':'','Wisha Gul':'ST5'};
+
+  const trainees=[]; const attendance={};
+  Object.keys(grid).forEach((name,i)=>{
+    const id='t'+String(i).padStart(2,'0');
+    trainees.push({id,name});
+    const g=grades[name]||'';
+    grid[name].forEach((v,j)=>{ if(v) attendance[id+'|'+sessions[j].id]={grade:g}; });
+  });
+  const T = n => (trainees.find(t=>t.name===n)||{}).id;
+
+  // long-term status from Trainee_Status sheet
+  const status=[
+    {id:uid(),trainee:T('Kristijonas Milinis'),type:'cct',start:null,end:'2025-08'},
+    {id:uid(),trainee:T('Elliot Heward'),type:'cct',start:null,end:'2025-08'},
+    {id:uid(),trainee:T('Kristina Lee'),type:'cct',start:null,end:'2025-09'},
+    {id:uid(),trainee:T('Rupali Sawant'),type:'cct',start:null,end:'2026-01'},
+    {id:uid(),trainee:T('Rohan Pinto'),type:'cct',start:null,end:'2026-01'},
+    {id:uid(),trainee:T('Milad Golsharifi'),type:'idt_out',start:'2026-02',end:null},
+    {id:uid(),trainee:T('Sarah Akbar'),type:'mat',start:'2025-10',end:null},
+    {id:uid(),trainee:T('Bhargavi Chandrasekar'),type:'mat',start:'2025-10',end:null},
+    {id:uid(),trainee:T('Nimisha Vallabh'),type:'mat',start:'2025-07',end:null},
+    {id:uid(),trainee:T('Katharine Hamlett'),type:'mat',start:'2025-08',end:null},
+    {id:uid(),trainee:T('Gabrielle Thompson'),type:'mat',start:'2025-08',end:null},
+    {id:uid(),trainee:T('Mila Roode'),type:'mat',start:'2025-07',end:null},
+  ].filter(s=>s.trainee);
+
+  // sample excused absences from Excused_Absences sheet (month-level)
+  const mIdx={'2025-08':'s01','2025-09':'s02','2025-10':'s03','2025-11':'s04','2026-01':'s05','2026-03':'s06','2026-04':'s07','2026-05':'s08'};
+  const exRaw=[
+    ['Alex Collingwood','2025-10','Post on call rest'],['Alex Collingwood','2026-04','Annual Leave'],
+    ['Anastasha Herman','2025-09','Annual Leave'],['Anastasha Herman','2025-11','Emailed apology'],['Anastasha Herman','2026-04','Emailed apology'],['Anastasha Herman','2026-05','Theatre commitments'],
+    ['Arshad Zubair','2026-01','Sickness'],['Arshad Zubair','2025-10','Annual Leave'],
+    ['Ciaran Walsh','2025-11','On-call commitments'],['Ciaran Walsh','2026-01','Sickness'],['Ciaran Walsh','2026-03','Sickness'],
+    ['Dickson Dewantoro','2026-01','Annual Leave'],['Dickson Dewantoro','2026-03','Annual Leave'],
+    ['Ding Yang','2025-09','Emailed apology'],['Ding Yang','2025-10','Post on call rest'],
+    ['Dorota Chudek','2026-03','LTFT day'],
+    ['Emma Hogg','2025-11','LTFT day'],['Emma Hogg','2026-05','Study Leave (Exam/course)'],['Emma Hogg','2025-08','LTFT day'],['Emma Hogg','2026-03','LTFT day'],
+    ['Gabrielle Thompson','2026-05','Annual Leave'],
+    ['Guy Shetrit','2026-03','Annual Leave'],['Guy Shetrit','2026-04','On-call commitments'],
+    ['Hamza Qureshi','2025-11','Childcare'],['Hamza Qureshi','2025-08','Sickness'],['Hamza Qureshi','2026-05','On-call commitments'],
+    ['Haris Duvnjak','2025-11','Annual Leave'],['Haris Duvnjak','2026-01','Annual Leave'],['Haris Duvnjak','2026-05','Annual Leave'],['Haris Duvnjak','2025-09','Post on-call rest'],
+    ['Jessica Daniels','2025-09','Emailed apology'],['Jessica Daniels','2025-10','Emailed apology'],
+    ['Jonny Abbas','2025-09','Emailed apology'],['Jonny Abbas','2026-05','LTFT day'],['Jonny Abbas','2026-03','LTFT day'],['Jonny Abbas','2026-04','LTFT day'],
+    ['Kristijonas Milinis','2026-01','Emailed apology'],['Mahmoud Al Aaraj','2026-01','Emailed apology'],['Michael Chu','2026-01','Emailed apology'],
+    ['Rebecca Harrison','2026-05','Emailed apology'],['Rohan Pinto','2025-09','Emailed apology'],
+    ['Sarah Dawes','2026-03','LTFT day'],['Sarah Dawes','2026-04','LTFT day'],['Sarah Dawes','2026-05','LTFT day'],
+    ['Shivani Parihar','2026-04','Theatre commitments'],['Shivani Parihar','2026-05','Theatre commitments'],
+    ['Tim Davies','2025-09','Study Leave (Exam/course)'],['Tim Davies','2025-10','Emailed apology'],['Tim Davies','2026-01','Emailed apology'],['Tim Davies','2026-05','Annual Leave'],['Tim Davies','2026-04','Post on-call rest'],['Tim Davies','2025-08','Annual Leave'],
+    ['Tom Hampton','2025-11','Sickness'],['Tom Hampton','2026-01','Sickness'],
+    ['Haseem Raja','2026-04','Study Leave (Exam/course)'],
+    ['Atia Khan','2025-11','Study Leave (Exam/course)'],['Atia Khan','2026-03','Annual Leave'],
+  ];
+  const excused=[];
+  exRaw.forEach(([n,m,r])=>{ const t=T(n), s=mIdx[m]; if(t&&s) excused.push({id:uid(),trainee:t,session:s,reason:r,ts:Date.now()}); });
+
+  return {trainees,sessions,attendance,excused,status};
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+(async function(){
+  DB = await loadDB();
+  if(!DB){ DB = seedData(); await saveDB(); }
+  // ensure shape
+  DB.trainees??=[]; DB.sessions??=[]; DB.attendance??={}; DB.excused??=[]; DB.status??=[];
+  // migrate legacy 'idt' (single transfer type) to idt_out
+  DB.status.forEach(s=>{ if(s.type==='idt') s.type='idt_out'; });
+
+  const params=new URLSearchParams(location.search);
+  if(params.has('form')){
+    wire();                 // wiring harmless, but kiosk uses its own
+    bootKiosk(params.get('form'));
+    return;
+  }
+  wire();
+  initMonthPickers();
+  updateStatusHelper();
+  renderAll();
+})();
+</script>
+</body>
+</html>
