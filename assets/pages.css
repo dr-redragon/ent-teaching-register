@@ -1,0 +1,46 @@
+/* Shared look for the standalone pages — same palette as the register. */
+:root{
+  --ink:#15211c; --paper:#f6f4ec; --card:#fffdf7; --line:#d8d2c0;
+  --moss:#3f6b4f; --moss-deep:#2c4d39; --clay:#c0613a; --gold:#b08a3e; --muted:#7a7568;
+  --shadow:0 1px 2px rgba(21,33,28,.06),0 8px 24px rgba(21,33,28,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:"Inter","Segoe UI",system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.55;font-size:15px}
+header.masthead{background:var(--moss-deep);color:#f6f4ec;padding:20px clamp(16px,4vw,40px);border-bottom:3px solid var(--gold)}
+.masthead-inner{max-width:980px;margin:0 auto;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.mark{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:700;letter-spacing:-.4px}
+.sub{font-size:11.5px;text-transform:uppercase;letter-spacing:.22em;color:#b8cbbd;font-weight:600}
+main{max-width:980px;margin:0 auto;padding:clamp(18px,3vw,34px) clamp(14px,3vw,32px) 80px}
+.narrow{max-width:520px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:clamp(18px,3vw,26px)}
+.card + .card{margin-top:18px}
+h1{font-family:Georgia,serif;font-size:24px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
+h2{font-family:Georgia,serif;font-size:18px;font-weight:700;margin-bottom:10px}
+.lede{color:var(--muted);font-size:14px;margin-bottom:20px}
+label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+.field{margin-bottom:16px}
+input,select,textarea{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:9px;padding:11px 12px;width:100%}
+textarea{min-height:96px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--moss);outline-offset:-1px;border-color:var(--moss)}
+button.btn{appearance:none;cursor:pointer;font:inherit;font-weight:600;font-size:14.5px;border-radius:10px;padding:11px 18px;border:1px solid transparent;transition:.15s}
+.btn.primary{background:var(--moss);color:#fff}
+.btn.primary:hover{background:var(--moss-deep)}
+.btn.primary:disabled{background:#a9bdae;cursor:not-allowed}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+.btn.ghost:hover{border-color:var(--moss);color:var(--moss-deep)}
+.btn.block{width:100%;padding:14px;font-size:15.5px}
+.btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
+.helper{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.notice{border-radius:10px;padding:11px 14px;font-size:13.5px;margin-bottom:16px}
+.notice.info{background:#eef2ea;border:1px solid #cfdcd2;color:var(--moss-deep)}
+.notice.warn{background:#fbf3ee;border:1px solid #e4c3ad;color:#8d4526}
+.notice.bad{background:#fbeee9;border:1px solid #e0b09a;color:#9c3d1c}
+.done{text-align:center;padding:22px 6px}
+.done .tick{width:62px;height:62px;border-radius:50%;background:var(--moss);color:#fff;font-size:32px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.done h2{margin-bottom:6px}
+.done p{color:var(--muted);font-size:14px}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.session-line{font-size:14px;color:var(--moss-deep);font-weight:600}
+.session-sub{font-size:13px;color:var(--muted)}
