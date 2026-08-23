@@ -20,3 +20,14 @@ https://YOUR_USERNAME.github.io/REPOSITORY_NAME/
 
 - Data is stored in the browser using localStorage.
 - QR code functionality uses a public CDN.
+
+## Academic years
+
+The register year runs **August → July**. Each academic year (e.g. 2025/26 =
+Aug 2025 – Jul 2026) gets its own tab and its own attendance table on the
+Attendance panel, with percentages calculated from that year's sessions only.
+"All years" stacks every year, one table each.
+
+Reports can be generated for a single academic year or several at once — tick
+the years in the Generate report dialog and choose whether to output a table
+per year, one combined table, or both.
