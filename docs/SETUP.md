@@ -90,6 +90,16 @@ Two honest limits: anyone holding the organiser token sees the attendee list and
 emails (it is a shared password, not per-user accounts); and free-text comments
 are only as anonymous as what people type into them.
 
+### The two linter warnings are deliberate
+
+Supabase's database linter flags `feedback_public` and `session_stats` as
+*Security Definer View*. That is the mechanism doing the work, not a mistake:
+those views run with the owner's rights precisely so the report can read
+aggregates while browsers stay locked out of `feedback_responses` itself. Both
+views expose only non-identifying columns. Leaving the warnings is the correct
+outcome here; "fixing" them by making the views run as the caller would break
+the report or force the raw table open.
+
 ---
 
 ## 4. If something goes wrong
