@@ -85,15 +85,7 @@ const params = new URLSearchParams(location.search);
 const SESSION_ID = params.get('s') || '';
 const el = (id) => document.getElementById(id);
 
-/* The question set. Add, remove or reword freely — answers are stored as jsonb,
-   so changing this needs no database migration. Keep them 1-5 scales if you want
-   them averaged on the report page. */
-const QUESTIONS = [
-  { key: 'content',      text: 'The content was relevant to my training' },
-  { key: 'delivery',     text: 'The teaching was clear and well delivered' },
-  { key: 'organisation', text: 'The day was well organised' },
-  { key: 'recommend',    text: 'I would recommend this session to a colleague' },
-];
+const QUESTIONS = ENT.QUESTIONS;   // shared with the report page, in assets/config.js
 const AGREE_ENDS = ['1 — strongly disagree', '5 — strongly agree'];
 const OVERALL_ENDS = ['1 — poor', '5 — excellent'];
 
