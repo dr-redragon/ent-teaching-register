@@ -9,6 +9,8 @@ export interface CertificateInput {
   location?: string | null;
   reference?: string | null;
   logoUrl?: string | null;
+  signatoryName?: string | null;   // optional: adds a signature block
+  signatoryRole?: string | null;
 }
 
 const INK = rgb(0.082, 0.129, 0.110);   // #15211c
@@ -75,7 +77,7 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Uint
   page.drawRectangle({ x: 26, y: 26, width: width - 52, height: height - 52, borderColor: MOSS, borderWidth: 2.5 });
   page.drawRectangle({ x: 34, y: 34, width: width - 68, height: height - 68, borderColor: GOLD, borderWidth: 0.9 });
 
-  let cursor = height - 92;
+  let cursor = height - 104;
 
   if (input.logoUrl) {
     const logo = await loadLogo(pdf, input.logoUrl);
@@ -108,6 +110,19 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Uint
   cursor -= 26;
   const when = formatDate(input.sessionDate) + (input.location ? `  -  ${safe(input.location)}` : "");
   centre(when, sans, 12.5, cursor, MUTED);
+
+  // Optional signature block. Without a signatory the page simply keeps its
+  // lower margin rather than leaving an obvious hole in the middle.
+  // Anchored to the foot of the page rather than to the text above it, so a tall
+  // logo cannot push it into the footer.
+  if (input.signatoryName) {
+    page.drawLine({
+      start: { x: width / 2 - 110, y: 140 }, end: { x: width / 2 + 110, y: 140 },
+      thickness: 0.8, color: MOSS,
+    });
+    centre(input.signatoryName, serifBold, 13, 118);
+    if (input.signatoryRole) centre(input.signatoryRole, sans, 10, 102, MUTED);
+  }
 
   const footY = 62;
   page.drawLine({ start: { x: 70, y: footY + 20 }, end: { x: width - 70, y: footY + 20 }, thickness: 0.6, color: GOLD });
