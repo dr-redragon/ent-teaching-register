@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — ENT Regional Teaching</title>
+<link rel="stylesheet" href="assets/pages.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <span class="mark">The Register</span>
+    <span class="sub">ENT Regional Teaching</span>
+  </div>
+</header>
+
+<main class="narrow">
+  <div class="card" id="card">
+    <div id="loading" class="lede">Loading the session…</div>
+
+    <div id="form" style="display:none">
+      <h1>Sign in</h1>
+      <p class="lede" id="sessionLine"></p>
+
+      <div id="formError"></div>
+
+      <div class="field">
+        <label class="fld" for="who">Your name</label>
+        <select id="who"></select>
+      </div>
+
+      <div class="field" id="otherNameField" style="display:none">
+        <label class="fld" for="otherName">Type your full name</label>
+        <input id="otherName" placeholder="e.g. Jane Smith" autocomplete="name">
+      </div>
+
+      <div class="field">
+        <label class="fld" for="grade">Your grade this rotation</label>
+        <select id="grade">
+          <option value="">Select grade…</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="fld" for="email">Your email</label>
+        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="name@nhs.net">
+        <p class="helper">Your certificate is sent here once you have completed the feedback form after the session.</p>
+      </div>
+
+      <button class="btn primary block" id="submit">I'm here — sign me in</button>
+    </div>
+
+    <div id="done" style="display:none" class="done">
+      <div class="tick">✓</div>
+      <h2 id="doneName"></h2>
+      <p id="doneMsg"></p>
+    </div>
+  </div>
+</main>
+
+<script src="assets/config.js"></script>
+<script>
+/* Live session check-in. Writes the attendance to Supabase (the record the
+   certificate gate relies on) and, best effort, into the register blob so the
+   organiser's attendance grid updates without waiting for a manual sync. */
+const params = new URLSearchParams(location.search);
+const SESSION_ID = params.get('s') || '';
+const el = (id) => document.getElementById(id);
+
+let session = null;
+let roster = [];          // [{id, name}] from the register
+let submitting = false;
+
+function fail(message) {
+  el('loading').style.display = 'none';
+  el('form').style.display = 'none';
+  el('card').insertAdjacentHTML('beforeend',
+    `<div class="notice bad">${ENT.esc(message)}</div>`);
+}
+
+function showError(message) {
+  el('formError').innerHTML = `<div class="notice bad">${ENT.esc(message)}</div>`;
+}
+
+async function loadRoster() {
+  try {
+    const rows = await ENT.rest('register_store?id=eq.default&select=data');
+    const data = rows && rows[0] && rows[0].data;
+    const list = (data && data.trainees) || [];
+    return list.slice().sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    return [];            // roster is a convenience; typing a name still works
+  }
+}
+
+async function boot() {
+  if (!SESSION_ID) return fail('This sign-in link is missing its session. Please scan the QR code again.');
+
+  let rows;
+  try {
+    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,local_id');
+  } catch (e) {
+    return fail('Could not reach the register. Check your connection and try again.');
+  }
+  session = rows && rows[0];
+  if (!session) return fail('This sign-in link is not valid any more.');
+
+  roster = await loadRoster();
+
+  el('sessionLine').innerHTML =
+    `<span class="session-line">${ENT.esc(session.title)}</span><br>` +
+    `<span class="session-sub">${ENT.esc(ENT.fmtDate(session.session_date))}` +
+    (session.location ? ' · ' + ENT.esc(session.location) : '') + `</span>`;
+
+  el('who').innerHTML =
+    '<option value="">Select your name…</option>' +
+    roster.map((t) => `<option value="${ENT.esc(t.id)}">${ENT.esc(t.name)}</option>`).join('') +
+    '<option value="__other">My name is not on the list…</option>';
+
+  el('grade').innerHTML = '<option value="">Select grade…</option>' +
+    ENT.GRADES.map((g) => `<option>${g}</option>`).join('');
+
+  el('who').onchange = () => {
+    const other = el('who').value === '__other';
+    el('otherNameField').style.display = other ? 'block' : 'none';
+    if (other) el('otherName').focus();
+  };
+
+  el('loading').style.display = 'none';
+  el('form').style.display = 'block';
+  el('submit').onclick = submit;
+}
+
+// Mirror the check-in into the register blob so the organiser's grid stays live.
+// Best effort only: the Supabase attendee row is the record that matters, and the
+// organiser console can re-sync at any time.
+async function mirrorToRegister(traineeId, grade) {
+  if (!traineeId || !session.local_id) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const rows = await ENT.rest('register_store?id=eq.default&select=data,updated_at');
+      const row = rows && rows[0];
+      if (!row || !row.data) return;
+      const db = row.data;
+      db.attendance = db.attendance || {};
+      const key = traineeId + '|' + session.local_id;
+      if (db.attendance[key] && db.attendance[key].grade === grade) return;   // already recorded
+      db.attendance[key] = { grade: grade || '' };
+      const res = await fetch(ENT.SUPABASE_URL + '/rest/v1/register_store?id=eq.default&updated_at=eq.' +
+          encodeURIComponent(row.updated_at), {
+        method: 'PATCH',
+        headers: {
+          apikey: ENT.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + ENT.SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({ data: db, updated_at: new Date().toISOString() }),
+      });
+      const written = await res.json().catch(() => []);
+      if (res.ok && written.length) return;      // our write landed
+      // someone else wrote first — re-read and try again
+    } catch (e) {
+      return;
+    }
+  }
+}
+
+async function submit() {
+  if (submitting) return;
+  el('formError').innerHTML = '';
+
+  const choice = el('who').value;
+  const name = choice === '__other' ? el('otherName').value.trim()
+             : (roster.find((t) => t.id === choice) || {}).name || '';
+  const grade = el('grade').value;
+  const email = el('email').value.trim();
+
+  if (!name) return showError('Please choose or type your name.');
+  if (!grade) return showError('Please select your grade.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('Please enter a valid email address.');
+
+  submitting = true;
+  const btn = el('submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Signing you in…';
+
+  try {
+    await ENT.api('check-in', { session_id: SESSION_ID, name, email, grade });
+    if (choice !== '__other') await mirrorToRegister(choice, grade);
+    el('form').style.display = 'none';
+    el('done').style.display = 'block';
+    el('doneName').textContent = "You're signed in";
+    el('doneMsg').textContent =
+      `${name} (${grade}) — ${session.title}. After the session you'll get a short feedback form; ` +
+      `completing it releases your certificate to ${email}.`;
+  } catch (err) {
+    showError(err.message || 'Could not sign you in. Please try again.');
+    btn.disabled = false;
+    btn.textContent = "I'm here — sign me in";
+    submitting = false;
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
