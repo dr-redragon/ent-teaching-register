@@ -15,6 +15,7 @@ Static website ready for GitHub Pages.
 
 GitHub will publish the site at:
 https://YOUR_USERNAME.github.io/REPOSITORY_NAME/
+https://dr-redragon.github.io/ent-teaching-register/
 
 ## Notes
 
