@@ -180,6 +180,27 @@
   .danger-zone{margin-top:30px;border:1px dashed #d6b3a0;border-radius:12px;padding:16px;background:#fbf3ee}
   .kebab{cursor:pointer;color:var(--muted);font-weight:700;padding:2px 8px;border-radius:6px}
   .kebab:hover{background:#eee}
+  /* ---- academic-year tabs ---- */
+  .yr-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 18px}
+  .yr-tab{
+    appearance:none;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+    border:1px solid var(--line);background:#fff;color:var(--muted);
+    padding:8px 15px;border-radius:99px;transition:.12s;white-space:nowrap;
+  }
+  .yr-tab:hover{border-color:var(--moss);color:var(--moss-deep)}
+  .yr-tab.on{background:var(--moss);border-color:var(--moss);color:#fff}
+  .yr-tab .cnt{font-weight:500;font-size:11.5px;opacity:.72;margin-left:6px}
+  .year-block{margin-bottom:26px}
+  .year-block:last-child{margin-bottom:0}
+  .year-block-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 2px 10px}
+  .year-block-head h3{font-family:Georgia,serif;font-size:17px;font-weight:700;letter-spacing:-.2px}
+  .year-block-head .meta{font-size:12.5px;color:var(--muted)}
+  .hidden-note{font-size:12.5px;color:var(--muted);margin:9px 2px 0}
+  .mini-check{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
+  .mini-check input{width:15px;height:15px;accent-color:var(--moss);cursor:pointer}
+  .group-head{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-deep);
+    background:#f1f3ea;border-radius:7px;padding:5px 9px;margin:14px 0 6px}
+  .group-head:first-child{margin-top:0}
   /* ---- report modal ---- */
   .yr-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border:1.5px solid var(--line);border-radius:99px;cursor:pointer;font-size:13.5px;font-weight:600;background:#fff;transition:.12s;user-select:none}
   .yr-pill input{display:none}
@@ -187,6 +208,9 @@
   .yr-pill.on{background:var(--moss);color:#fff;border-color:var(--moss)}
   .report-check{display:flex;align-items:center;gap:9px;font-size:13.5px;cursor:pointer;padding:5px 0}
   .report-check input[type=checkbox]{width:15px;height:15px;accent-color:var(--moss);cursor:pointer;flex-shrink:0}
+  .linkbtn{appearance:none;border:none;background:none;font:inherit;font-size:12.5px;font-weight:600;color:var(--moss);cursor:pointer;padding:3px 6px;border-radius:6px}
+  .linkbtn:hover{background:#eef0e6;color:var(--moss-deep)}
+  .report-yr-actions{display:flex;gap:4px;margin-top:9px}
   @media(max-width:820px){
     .qr-layout{grid-template-columns:1fr}
     .grid2{grid-template-columns:1fr}
@@ -224,16 +248,16 @@
   <!-- ===== DASHBOARD ===== -->
   <section class="panel active" id="panel-dash">
     <h2 class="panel-title">Attendance summary</h2>
-    <p class="panel-lede">Live figures recalculated from check-ins, excused absences and long-term status. Adjusted attendance excludes excused sessions and any month a trainee was on leave or post-CCT from the denominator.</p>
+    <p class="panel-lede">Each academic year runs August to July and has its own table — pick a year below. Live figures recalculated from check-ins, excused absences and long-term status. Adjusted attendance excludes excused sessions and any month a trainee was on leave or post-CCT from the denominator.</p>
+    <div class="yr-tabs" id="dashYearTabs"></div>
     <div class="stat-strip" id="statStrip"></div>
     <div class="row-actions" style="margin-bottom:14px">
       <input id="dashSearch" placeholder="Search trainee…" style="max-width:260px">
+      <label class="mini-check" title="Hide trainees who were not in the programme for any session in the year"><input type="checkbox" id="dashHideNA" checked> Hide trainees not in programme</label>
       <button class="btn ghost sm" id="exportCsv">Export CSV</button>
       <button class="btn primary sm" id="reportBtn">Generate report</button>
     </div>
-    <div class="table-wrap">
-      <table id="dashTable"><thead></thead><tbody></tbody></table>
-    </div>
+    <div id="dashTables"></div>
     <div class="legend">
       <span><span class="dot present">✓</span> Attended</span>
       <span><span class="dot absent"></span> Missed</span>
@@ -442,12 +466,25 @@
       <div>
         <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Academic year(s) · Aug – Jul</div>
         <div id="reportYears" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        <div class="report-yr-actions">
+          <button type="button" class="linkbtn" id="reportYearsAll">Select all</button>
+          <button type="button" class="linkbtn" id="reportYearsNone">Clear</button>
+        </div>
+        <div id="reportLayoutWrap" style="margin-top:14px;display:none">
+          <label class="fld" for="reportLayout">Layout across the selected years</label>
+          <select id="reportLayout">
+            <option value="per">A separate table for each academic year</option>
+            <option value="both">Combined overview, then a table per year</option>
+            <option value="combined">One combined table across all selected years</option>
+          </select>
+        </div>
       </div>
       <div>
         <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Include trainees</div>
         <div style="display:flex;flex-direction:column">
           <label class="report-check"><input type="checkbox" id="reportIncludeCCT" checked> Include trainees who have completed training (CCT)</label>
           <label class="report-check"><input type="checkbox" id="reportIncludeIDT" checked> Include trainees who left via interdeanery transfer (IDT out)</label>
+          <label class="report-check"><input type="checkbox" id="reportHideNA" checked> Hide trainees with no eligible sessions in a year</label>
         </div>
       </div>
       <div>
@@ -645,15 +682,40 @@ function initMonthPickers(){
 }
 function monthOf(s){ return s.month; }
 function sessionsSorted(){ return [...DB.sessions].sort((a,b)=>a.month.localeCompare(b.month)); }
+
+/* ---- academic years: the register year runs August → July ----
+   'YYYY-MM' -> starting calendar year (Aug 2025 … Jul 2026 => 2025),
+   labelled '2025/26'. Everything year-scoped goes through these.      */
+const ALL_YEARS='__all__';
+function acYearStart(month){ const [y,m]=String(month).split('-').map(Number); return m>=8?y:y-1; }
+function acYearLabel(startY){ return startY+'/'+String(startY+1).slice(-2); }
+function sessAcademicYear(month){ return acYearLabel(acYearStart(month)); }
+function acYearRange(label){ const y=+String(label).split('/')[0]; return 'Aug '+y+' – Jul '+(y+1); }
+function availableAcademicYears(){ return [...new Set(DB.sessions.map(s=>sessAcademicYear(s.month)))].sort(); }
+function currentAcademicYear(){ const d=new Date(); return acYearLabel(d.getMonth()+1>=8?d.getFullYear():d.getFullYear()-1); }
+function sessionsInYear(label){ return sessionsSorted().filter(s=>sessAcademicYear(s.month)===label); }
+function defaultDashYear(){
+  const ys=availableAcademicYears();
+  if(!ys.length) return ALL_YEARS;
+  const cur=currentAcademicYear();
+  return ys.includes(cur)?cur:ys[ys.length-1];   // else the most recent year with sessions
+}
 function findTrainee(id){ return DB.trainees.find(t=>t.id===id); }
 function findSession(id){ return DB.sessions.find(s=>s.id===id); }
 function attKey(t,s){ return t+'|'+s; }
 function isPresent(t,s){ return !!DB.attendance[attKey(t,s)]; }
 function gradeAt(t,s){ const v=DB.attendance[attKey(t,s)]; return (v&&typeof v==='object'&&v.grade)?v.grade:''; }
-function latestGrade(traineeId){
-  // most recent session (by month) the trainee attended with a recorded grade
-  const sess=sessionsSorted();
-  for(let i=sess.length-1;i>=0;i--){ const g=gradeAt(traineeId,sess[i].id); if(g) return g; }
+function latestGrade(traineeId, scope){
+  // most recent session (by month) the trainee attended with a recorded grade.
+  // With a scope (e.g. one academic year) the grade is read from that year first,
+  // then from any earlier session, so a past year never shows a future grade.
+  const all=sessionsSorted();
+  const list=scope||all;
+  for(let i=list.length-1;i>=0;i--){ const g=gradeAt(traineeId,list[i].id); if(g) return g; }
+  if(scope&&scope.length){
+    const cutoff=scope[scope.length-1].month;
+    for(let i=all.length-1;i>=0;i--){ if(all[i].month<=cutoff){ const g=gradeAt(traineeId,all[i].id); if(g) return g; } }
+  }
   return '';
 }
 
@@ -697,14 +759,13 @@ function cellState(traineeId, sess){
   return 'absent';
 }
 
-function computeRow(trainee){
-  const sess = sessionsSorted();
+function computeRowForSessions(trainee, sessList){
   let attended=0, total=0, excused=0, eligible=0;
   const cells=[];
-  for(const s of sess){
+  for(const s of sessList){
     const st = cellState(trainee.id, s);
     cells.push({sess:s, state:st});
-    total++;                                   // every defined session
+    total++;                                   // every session in scope
     if(st==='na') continue;
     eligible++;                                // eligible sessions
     if(st==='present') attended++;
@@ -715,6 +776,7 @@ function computeRow(trainee){
   const adjPct = adjDenom>0? Math.round(attended/adjDenom*100): (eligible===0? null : 0);
   return {trainee,cells,attended,total,excused,eligible,adjDenom,rawPct,adjPct};
 }
+function computeRow(trainee){ return computeRowForSessions(trainee, sessionsSorted()); }
 
 function activeStatusType(traineeId){
   const rows = statusFor(traineeId).filter(s=>s.type!=='active');
@@ -764,11 +826,35 @@ function attachCellTip(tb){
   });
 }
 
-function renderDash(){
-  const q = (document.getElementById('dashSearch').value||'').toLowerCase();
-  const rows = DB.trainees.map(computeRow)
-    .filter(r=>r.trainee.name.toLowerCase().includes(q));
+/* ---- dashboard: one table per academic year ---- */
+let dashYear=null;                       // an academic-year label, or ALL_YEARS
 
+function renderYearTabs(){
+  const el=document.getElementById('dashYearTabs');
+  const ys=availableAcademicYears();
+  if(dashYear===null) dashYear=defaultDashYear();
+  if(dashYear!==ALL_YEARS && !ys.includes(dashYear)) dashYear=defaultDashYear();   // year lost its last session
+  if(dashYear===ALL_YEARS && ys.length===1) dashYear=defaultDashYear();            // only one year left to show
+  if(!ys.length){ el.innerHTML=''; return; }
+  const tabs=ys.map(y=>
+    `<button class="yr-tab${dashYear===y?' on':''}" data-year="${escHtml(y)}" title="${escHtml(acYearRange(y))}">`+
+    `${escHtml(y)}<span class="cnt">${sessionsInYear(y).length}</span></button>`);
+  if(ys.length>1) tabs.push(
+    `<button class="yr-tab${dashYear===ALL_YEARS?' on':''}" data-year="${ALL_YEARS}" title="Every academic year, one table each">`+
+    `All years<span class="cnt">${DB.sessions.length}</span></button>`);
+  el.innerHTML=tabs.join('');
+  el.querySelectorAll('.yr-tab').forEach(b=>b.onclick=()=>{ dashYear=b.dataset.year; renderDash(); });
+}
+
+// rows for one scope of sessions, honouring the search box and the "hide not in programme" toggle
+function dashRowsFor(sessList,q,hideNA){
+  let rows=DB.trainees.filter(t=>t.name.toLowerCase().includes(q))
+                      .map(t=>computeRowForSessions(t,sessList));
+  let hidden=0;
+  if(hideNA && sessList.length){
+    hidden=rows.filter(r=>r.eligible===0).length;
+    rows=rows.filter(r=>r.eligible>0);
+  }
   rows.sort((a,b)=>{
     let A,B;
     if(sortKey==='name'){A=a.trainee.name;B=b.trainee.name;}
@@ -777,11 +863,12 @@ function renderDash(){
     else {A=a.attended;B=b.attended;}
     if(A<B)return -1*sortDir; if(A>B)return 1*sortDir; return 0;
   });
+  return {rows,hidden};
+}
 
-  const sess = sessionsSorted();
-  const thead = document.querySelector('#dashTable thead');
+function dashTableHtml(rows,sessList){
   const arrow = k => sortKey===k ? `<span class="arrow">${sortDir>0?'▲':'▼'}</span>` : `<span class="arrow">↕</span>`;
-  thead.innerHTML = `<tr>
+  const head = `<tr>
     <th data-sort="name">Trainee ${arrow('name')}</th>
     <th class="no-sort">Status</th>
     <th class="no-sort">Sessions</th>
@@ -789,64 +876,99 @@ function renderDash(){
     <th data-sort="raw">Raw % ${arrow('raw')}</th>
     <th data-sort="adj">Adjusted % ${arrow('adj')}</th>
   </tr>`;
-  thead.querySelectorAll('th[data-sort]').forEach(th=>{
-    th.onclick=()=>{const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=1;} renderDash();};
-  });
 
-  const tb = document.querySelector('#dashTable tbody');
-  if(!rows.length){ tb.innerHTML=`<tr><td colspan="6"><div class="empty">No trainees yet. Add some under “Trainees &amp; sessions”, or load the sample cohort.</div></td></tr>`; return; }
-
-  tb.innerHTML = rows.map(r=>{
-    const stat = activeStatusType(r.trainee.id);
-    const badge = stat
-      ? `<span class="badge ${stat.type}">${{cct:'CCT',mat:'Mat/Pat',oop:'OOP',idt_in:'IDT in',idt_out:'IDT out'}[stat.type]}${(stat.start||stat.end)?' · '+(stat.start||stat.end):''}</span>`
-      : `<span class="badge active">Active</span>`;
-    const dots = r.cells.map(c=>{
-      const sym = c.state==='present'?'✓':c.state==='excused'?'e':c.state==='na'?'–':'';
-      const stateLabel = {present:'Attended',excused:'Excused',na:'Not eligible',absent:'Missed'}[c.state];
-      const g = c.state==='present'? gradeAt(r.trainee.id,c.sess.id):'';
-      return `<span class="dot ${c.state}" data-t="${r.trainee.id}" data-s="${c.sess.id}"`+
-        ` data-month="${c.sess.month}" data-sess="${c.sess.title.replace(/"/g,'&quot;')}"`+
-        ` data-name="${r.trainee.name.replace(/"/g,'&quot;')}" data-state="${stateLabel}" data-grade="${g}">${sym}</span>`;
+  let body;
+  if(!rows.length || !sessList.length){
+    const msg = !DB.trainees.length
+      ? 'No trainees yet. Add some under “Trainees &amp; sessions”, or load the sample cohort.'
+      : !sessList.length
+        ? 'No teaching days in this academic year yet — add one under “Trainees &amp; sessions”.'
+        : 'No trainees to show for this year.';
+    body=`<tr><td colspan="6"><div class="empty">${msg}</div></td></tr>`;
+  } else {
+    body=rows.map(r=>{
+      const stat = activeStatusType(r.trainee.id);
+      const badge = stat
+        ? `<span class="badge ${stat.type}">${{cct:'CCT',mat:'Mat/Pat',oop:'OOP',idt_in:'IDT in',idt_out:'IDT out'}[stat.type]}${(stat.start||stat.end)?' · '+fmtMonth(stat.start||stat.end):''}</span>`
+        : `<span class="badge active">Active</span>`;
+      const dots = r.cells.map(c=>{
+        const sym = c.state==='present'?'✓':c.state==='excused'?'e':c.state==='na'?'–':'';
+        const stateLabel = {present:'Attended',excused:'Excused',na:'Not eligible',absent:'Missed'}[c.state];
+        const g = c.state==='present'? gradeAt(r.trainee.id,c.sess.id):'';
+        return `<span class="dot ${c.state}" data-t="${r.trainee.id}" data-s="${c.sess.id}"`+
+          ` data-month="${escHtml(fmtMonth(c.sess.month))}" data-sess="${escHtml(c.sess.title)}"`+
+          ` data-name="${escHtml(r.trainee.name)}" data-state="${stateLabel}" data-grade="${escHtml(g)}">${sym}</span>`;
+      }).join('');
+      const adj = r.adjPct===null?'—':r.adjPct+'%';
+      return `<tr>
+        <td class="name-cell">${escHtml(r.trainee.name)}<span class="grade-tag">${escHtml(latestGrade(r.trainee.id,sessList))}</span></td>
+        <td>${badge}</td>
+        <td><div class="sess-cells">${dots}</div></td>
+        <td style="font-variant-numeric:tabular-nums">${r.attended}/${r.adjDenom>0?r.adjDenom:r.eligible}</td>
+        <td><span class="pct" style="color:${pctColor(r.rawPct)}">${r.rawPct}%</span>
+            <div class="pct-bar"><span style="width:${r.rawPct}%;background:${pctColor(r.rawPct)}"></span></div></td>
+        <td><span class="pct" style="color:${pctColor(r.adjPct)}">${adj}</span>
+            <div class="pct-bar"><span style="width:${r.adjPct??0}%;background:${pctColor(r.adjPct)}"></span></div></td>
+      </tr>`;
     }).join('');
-    const adj = r.adjPct===null?'—':r.adjPct+'%';
-    return `<tr>
-      <td class="name-cell">${r.trainee.name}<span class="grade-tag">${latestGrade(r.trainee.id)}</span></td>
-      <td>${badge}</td>
-      <td><div class="sess-cells">${dots}</div></td>
-      <td style="font-variant-numeric:tabular-nums">${r.attended}/${r.adjDenom>0?r.adjDenom:r.eligible}</td>
-      <td><span class="pct" style="color:${pctColor(r.rawPct)}">${r.rawPct}%</span>
-          <div class="pct-bar"><span style="width:${r.rawPct}%;background:${pctColor(r.rawPct)}"></span></div></td>
-      <td><span class="pct" style="color:${pctColor(r.adjPct)}">${adj}</span>
-          <div class="pct-bar"><span style="width:${r.adjPct??0}%;background:${pctColor(r.adjPct)}"></span></div></td>
-    </tr>`;
+  }
+  return `<div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderDash(){
+  renderYearTabs();
+  const q = (document.getElementById('dashSearch').value||'').toLowerCase();
+  const hideNA = document.getElementById('dashHideNA').checked;
+  const ys = availableAcademicYears();
+  // one block per academic year; a single block when a year tab is picked
+  const labels = ys.length ? (dashYear===ALL_YEARS ? ys.slice().reverse() : [dashYear]) : [null];
+
+  document.getElementById('dashTables').innerHTML = labels.map(label=>{
+    const sessList = label? sessionsInYear(label) : [];
+    const {rows,hidden} = dashRowsFor(sessList,q,hideNA);
+    const head = labels.length>1
+      ? `<div class="year-block-head"><h3>${escHtml(label)}</h3>`+
+        `<span class="meta">${escHtml(acYearRange(label))} · ${sessList.length} teaching day${sessList.length!==1?'s':''}</span></div>`
+      : '';
+    const note = hidden
+      ? `<div class="hidden-note">${hidden} trainee${hidden!==1?'s':''} hidden — not in the programme for any session in ${escHtml(label)}.</div>`
+      : '';
+    return `<div class="year-block">${head}${dashTableHtml(rows,sessList)}${note}</div>`;
   }).join('');
 
-  // click a dot to toggle present/absent
-  tb.querySelectorAll('.dot').forEach(d=>{
-    if(d.classList.contains('na')) return;
-    d.onclick=async()=>{
-      const k=attKey(d.dataset.t,d.dataset.s);
-      if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
-      await saveDB(); renderAll();
-    };
-  });
-
-  attachCellTip(tb);
-
-  // stat strip
+  // stat strip for whatever the tabs currently scope to
+  const scopeSess = (dashYear===ALL_YEARS||!ys.length) ? sessionsSorted() : sessionsInYear(dashYear);
+  const {rows} = dashRowsFor(scopeSess,q,hideNA);
   const elig = rows.filter(r=>r.eligible>0);
   const avgAdj = elig.length? Math.round(elig.reduce((s,r)=>s+(r.adjPct||0),0)/elig.length):0;
   const avgRaw = rows.length? Math.round(rows.reduce((s,r)=>s+r.rawPct,0)/rows.length):0;
   const full = elig.filter(r=>r.adjPct===100).length;
   const below = elig.filter(r=>r.adjPct!==null&&r.adjPct<60).length;
+  const scopeLbl = (dashYear===ALL_YEARS||!ys.length) ? 'All years' : dashYear;
   document.getElementById('statStrip').innerHTML = `
-    <div class="stat"><div class="n">${DB.trainees.length}</div><div class="l">Trainees</div></div>
-    <div class="stat"><div class="n">${DB.sessions.length}</div><div class="l">Teaching days</div></div>
+    <div class="stat"><div class="n">${rows.length}</div><div class="l">Trainees · ${escHtml(scopeLbl)}</div></div>
+    <div class="stat"><div class="n">${scopeSess.length}</div><div class="l">Teaching days</div></div>
     <div class="stat"><div class="n">${avgAdj}%</div><div class="l">Mean adjusted</div></div>
     <div class="stat"><div class="n">${avgRaw}%</div><div class="l">Mean raw</div></div>
     <div class="stat"><div class="n">${full}</div><div class="l">At 100% adjusted</div></div>
     <div class="stat accent"><div class="n">${below}</div><div class="l">Below 60%</div></div>`;
+}
+
+/* sorting, cell toggling and the hover tip are delegated off the container once,
+   so they survive the year tables being re-rendered */
+function wireDashTables(){
+  const cont=document.getElementById('dashTables');
+  cont.addEventListener('click',async e=>{
+    const th=e.target.closest('th[data-sort]');
+    if(th){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=1;} renderDash(); return; }
+    const d=e.target.closest('.dot');
+    if(d && !d.classList.contains('na')){
+      const k=attKey(d.dataset.t,d.dataset.s);
+      if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
+      await saveDB(); renderAll();
+    }
+  });
+  attachCellTip(cont);
 }
 
 /* ---- check-in / QR ---- */
@@ -855,11 +977,17 @@ function renderCheckin(){
   const sess = sessionsSorted();
   if(!activeSession && sess.length) activeSession = sess[sess.length-1].id;
   const picker = document.getElementById('sessPicker');
-  picker.innerHTML = sess.length? sess.slice().reverse().map(s=>`
+  const sessRadio = s=>`
     <label class="sess-radio ${s.id===activeSession?'sel':''}">
       <input type="radio" name="sess" value="${s.id}" ${s.id===activeSession?'checked':''}>
-      <span><strong>${s.month}</strong> · ${s.title}</span>
-    </label>`).join('') : `<div class="empty">Add a session first.</div>`;
+      <span><strong>${escHtml(fmtMonth(s.month))}</strong> · ${escHtml(s.title)}</span>
+    </label>`;
+  picker.innerHTML = sess.length
+    ? availableAcademicYears().slice().reverse().map(y=>
+        `<div class="group-head">${escHtml(y)} · ${escHtml(acYearRange(y))}</div>`+
+        sessionsInYear(y).slice().reverse().map(sessRadio).join('')
+      ).join('')
+    : `<div class="empty">Add a session first.</div>`;
   picker.querySelectorAll('input').forEach(i=>i.onchange=()=>{activeSession=i.value;renderCheckin();drawQR();});
 
   const sel = document.getElementById('ciTrainee');
@@ -867,7 +995,7 @@ function renderCheckin(){
     .map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
 
   const s = findSession(activeSession);
-  document.getElementById('qrSessLabel').textContent = s? `${s.month} · ${s.title}` : '—';
+  document.getElementById('qrSessLabel').textContent = s? `${fmtMonth(s.month)} · ${s.title}` : '—';
   drawQR();
   renderRecentCheckins();
 }
@@ -890,7 +1018,12 @@ function drawQR(){
 
 /* ---- excused ---- */
 function fillTraineeSelect(el){ el.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.id}">${t.name}</option>`).join(''); }
-function fillSessionSelect(el){ el.innerHTML = sessionsSorted().reverse().map(s=>`<option value="${s.id}">${s.month} · ${s.title}</option>`).join(''); }
+function fillSessionSelect(el){
+  el.innerHTML = availableAcademicYears().slice().reverse().map(y=>
+    `<optgroup label="${escHtml(y)} · ${escHtml(acYearRange(y))}">`+
+    sessionsInYear(y).slice().reverse().map(s=>`<option value="${s.id}">${escHtml(fmtMonth(s.month))} · ${escHtml(s.title)}</option>`).join('')+
+    `</optgroup>`).join('');
+}
 function renderExcused(){
   fillTraineeSelect(document.getElementById('exTrainee'));
   fillSessionSelect(document.getElementById('exSession'));
@@ -900,7 +1033,7 @@ function renderExcused(){
     const t=findTrainee(e.trainee), s=findSession(e.session);
     if(!t||!s) return '';
     return `<div class="list-item">
-      <div><div class="li-main">${t.name}</div><div class="li-sub">${s.month} · ${s.title} — ${e.reason}</div></div>
+      <div><div class="li-main">${t.name}</div><div class="li-sub">${fmtMonth(s.month)} · ${s.title} — ${e.reason}</div></div>
       <span class="kebab" data-del="${e.id}">Remove</span></div>`;
   }).join('') : `<div class="empty">No excused absences logged. Declared leave or on-call commitments added here are removed from the denominator.</div>`;
   list.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{DB.excused=DB.excused.filter(x=>x.id!==b.dataset.del);await saveDB();renderAll();toast('Excuse removed');});
@@ -909,13 +1042,14 @@ function renderExcused(){
 /* ---- status ---- */
 let editingStatusId=null;
 function statusRangeText(s){
-  if(s.type==='cct'){ const m=s.end||s.start; return m?`completes after ${m}`:'completes (month not set)'; }
-  if(s.type==='idt_out'){ const m=s.start||s.end; return m?`leaves deanery from ${m}`:'leaves deanery (month not set)'; }
-  if(s.type==='idt_in'){ const m=s.start||s.end; return m?`joins deanery from ${m}`:'joins deanery (month not set)'; }
+  const F=m=>`${fmtMonth(m)} (${sessAcademicYear(m)})`;
+  if(s.type==='cct'){ const m=s.end||s.start; return m?`completes after ${F(m)}`:'completes (month not set)'; }
+  if(s.type==='idt_out'){ const m=s.start||s.end; return m?`leaves deanery from ${F(m)}`:'leaves deanery (month not set)'; }
+  if(s.type==='idt_in'){ const m=s.start||s.end; return m?`joins deanery from ${F(m)}`:'joins deanery (month not set)'; }
   // mat / oop
-  if(s.start && s.end) return `excluded ${s.start} → ${s.end}`;
-  if(s.start && !s.end) return `excluded from ${s.start} → ongoing`;
-  if(!s.start && s.end) return `excluded up to ${s.end}, counts after`;
+  if(s.start && s.end) return `excluded ${F(s.start)} → ${F(s.end)}`;
+  if(s.start && !s.end) return `excluded from ${F(s.start)} → ongoing`;
+  if(!s.start && s.end) return `excluded up to ${F(s.end)}, counts after`;
   return 'excluded (no dates set) → ongoing';
 }
 function renderStatus(){
@@ -1008,9 +1142,14 @@ function renderManage(){
     await saveDB();renderAll();toast('Trainee removed');
   });
   const sl=document.getElementById('seList');
-  sl.innerHTML = sessionsSorted().reverse().map(s=>`
-    <div class="list-item"><div><span class="li-main">${s.month}</span> <span class="li-sub">${s.title}</span></div>
-    <span class="kebab" data-delse="${s.id}">✕</span></div>`).join('') || `<div class="empty">No sessions.</div>`;
+  const seItem = s=>`
+    <div class="list-item"><div><span class="li-main">${escHtml(fmtMonth(s.month))}</span> <span class="li-sub">${escHtml(s.title)}</span></div>
+    <span class="kebab" data-delse="${s.id}">✕</span></div>`;
+  sl.innerHTML = availableAcademicYears().slice().reverse().map(y=>{
+    const list=sessionsInYear(y);
+    return `<div class="group-head">${escHtml(y)} · ${list.length} teaching day${list.length!==1?'s':''}</div>`+
+           list.slice().reverse().map(seItem).join('');
+  }).join('') || `<div class="empty">No sessions.</div>`;
   sl.querySelectorAll('[data-delse]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.delse; const s=findSession(id);
     if(!confirm(`Delete the ${s?s.month+' · '+s.title:'session'} teaching day? All check-ins and excuses for it will be removed.`)) return;
@@ -1023,8 +1162,10 @@ function renderManage(){
 }
 
 function renderAll(){
+  const yrs=availableAcademicYears();
   document.getElementById('cohortPill').textContent =
-    `${DB.trainees.length} trainees · ${DB.sessions.length} teaching days`;
+    `${DB.trainees.length} trainees · ${DB.sessions.length} teaching days` +
+    (yrs.length? ` · ${yrs.length} academic year${yrs.length!==1?'s':''}`:'');
   renderDash(); renderCheckin(); renderExcused(); renderStatus(); renderManage();
 }
 
@@ -1046,6 +1187,8 @@ function wire(){
     document.getElementById('panel-'+t.dataset.tab).classList.add('active');
   });
   document.getElementById('dashSearch').oninput=renderDash;
+  document.getElementById('dashHideNA').onchange=renderDash;
+  wireDashTables();
 
   document.getElementById('ciBtn').onclick=async()=>{
     const t=document.getElementById('ciTrainee').value;
@@ -1121,22 +1264,29 @@ function wire(){
 }
 
 /* ---- export / backup ---- */
+function csvCell(v){ const t=String(v??''); return /[",\n]/.test(t)? '"'+t.replace(/"/g,'""')+'"' : t; }
 function exportCsv(){
-  const sess=sessionsSorted();
-  const head=['Name','Latest grade','Status', ...sess.map(s=>s.month+' '+s.title),'Attended','Eligible','Excused','AdjDenom','RawPct','AdjPct'];
-  const lines=[head.join(',')];
-  DB.trainees.map(computeRow).forEach(r=>{
+  // exports whatever the year tabs are showing: one academic year, or every session
+  const ys=availableAcademicYears();
+  const scoped = ys.length && dashYear!==ALL_YEARS ? dashYear : null;
+  const sess = scoped? sessionsInYear(scoped) : sessionsSorted();
+  const head=['Academic year','Name','Grade','Status', ...sess.map(s=>fmtMonth(s.month)+' '+s.title),
+              'Attended','Eligible','Excused','AdjDenom','RawPct','AdjPct'];
+  const lines=[head.map(csvCell).join(',')];
+  const yearLabel = scoped || (ys.length? ys.join(' + ') : '—');
+  DB.trainees.map(t=>computeRowForSessions(t,sess)).forEach(r=>{
     const stat=activeStatusType(r.trainee.id);
     const cells=r.cells.map(c=>{
       if(c.state==='present'){ const g=gradeAt(r.trainee.id,c.sess.id); return g?'P:'+g:'P'; }
       return {excused:'E',na:'NA',absent:'A'}[c.state];
     });
     lines.push([
-      '"'+r.trainee.name+'"', latestGrade(r.trainee.id), stat?stat.type:'active',
+      yearLabel, r.trainee.name, latestGrade(r.trainee.id,sess), stat?stat.type:'active',
       ...cells, r.attended, r.eligible, r.excused, r.adjDenom, r.rawPct, r.adjPct??''
-    ].join(','));
+    ].map(csvCell).join(','));
   });
-  dl(new Blob([lines.join('\n')],{type:'text/csv'}),'attendance_export.csv');
+  const suffix = scoped? scoped.replace('/','-') : 'all_years';
+  dl(new Blob([lines.join('\n')],{type:'text/csv'}),'attendance_'+suffix+'.csv');
 }
 function backup(){ dl(new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}),'ent_register_backup.json'); }
 function restore(e){
@@ -1159,46 +1309,36 @@ function pctHex(p){
   return '#c0613a';
 }
 
-function sessAcademicYear(month){
-  const [y,m]=month.split('-').map(Number);
-  const acY=m>=8?y:y-1;
-  return `${acY}/${String(acY+1).slice(-2)}`;
-}
-
-function availableAcademicYears(){
-  const years=new Set(DB.sessions.map(s=>sessAcademicYear(s.month)));
-  return [...years].sort();
-}
-
-function computeRowForSessions(trainee, filtSess){
-  let attended=0,total=0,excused=0,eligible=0;
-  const cells=[];
-  for(const s of filtSess){
-    const st=cellState(trainee.id,s);
-    cells.push({sess:s,state:st});
-    total++;
-    if(st==='na') continue;
-    eligible++;
-    if(st==='present') attended++;
-    if(st==='excused') excused++;
-  }
-  const adjDenom=eligible-excused;
-  const rawPct=total?Math.round(attended/total*100):0;
-  const adjPct=adjDenom>0?Math.round(attended/adjDenom*100):(eligible===0?null:0);
-  return {trainee,cells,attended,total,excused,eligible,adjDenom,rawPct,adjPct};
-}
-
 function showReportModal(){
   const years=availableAcademicYears();
   const yc=document.getElementById('reportYears');
+  // pre-tick the year the register is showing; "All years" pre-ticks everything
+  const preset = y => dashYear===ALL_YEARS || !years.includes(dashYear) || dashYear===y;
   yc.innerHTML=years.length
-    ? years.map(y=>`<label class="yr-pill on" data-yrpill><input type="checkbox" name="acYear" value="${escHtml(y)}" checked onchange="this.closest('[data-yrpill]').classList.toggle('on',this.checked)">${escHtml(y)}</label>`).join('')
+    ? years.map(y=>`<label class="yr-pill${preset(y)?' on':''}" data-yrpill title="${escHtml(acYearRange(y))}"><input type="checkbox" name="acYear" value="${escHtml(y)}" ${preset(y)?'checked':''} onchange="reportYearToggled(this)">${escHtml(y)}</label>`).join('')
     : `<span style="color:var(--muted);font-size:13px">No sessions found — add sessions first.</span>`;
+  syncReportLayout();
   document.getElementById('reportModal').style.display='flex';
 }
 
 function hideReportModal(){
   document.getElementById('reportModal').style.display='none';
+}
+
+function reportYearToggled(cb){
+  cb.closest('[data-yrpill]').classList.toggle('on',cb.checked);
+  syncReportLayout();
+}
+function setAllReportYears(on){
+  document.querySelectorAll('input[name="acYear"]').forEach(i=>{
+    i.checked=on; i.closest('[data-yrpill]').classList.toggle('on',on);
+  });
+  syncReportLayout();
+}
+// the layout choice only means anything with more than one year selected
+function syncReportLayout(){
+  const n=document.querySelectorAll('input[name="acYear"]:checked').length;
+  document.getElementById('reportLayoutWrap').style.display = n>1?'block':'none';
 }
 
 function wireReportModal(){
@@ -1211,17 +1351,22 @@ function wireReportModal(){
       el.closest('.report-check').style.opacity=sumOnly.checked?'0.35':'1';
     });
   };
+  document.getElementById('reportYearsAll').onclick=()=>setAllReportYears(true);
+  document.getElementById('reportYearsNone').onclick=()=>setAllReportYears(false);
 }
 
 function generateReport(){
-  const selectedYears=[...document.querySelectorAll('input[name="acYear"]:checked')].map(i=>i.value);
+  const selectedYears=[...document.querySelectorAll('input[name="acYear"]:checked')].map(i=>i.value).sort();
   if(!selectedYears.length) return toast('Select at least one academic year');
   const includeCCT=document.getElementById('reportIncludeCCT').checked;
   const includeIDT=document.getElementById('reportIncludeIDT').checked;
+  const hideNA=document.getElementById('reportHideNA').checked;
   const summaryOnly=document.getElementById('reportSummaryOnly').checked;
   const showSessions=!summaryOnly&&document.getElementById('reportShowSessions').checked;
   const showRaw=!summaryOnly&&document.getElementById('reportShowRaw').checked;
   const showAdj=!summaryOnly&&document.getElementById('reportShowAdj').checked;
+  // one year selected => a single table either way
+  const layout=selectedYears.length>1?document.getElementById('reportLayout').value:'combined';
 
   const filtSess=sessionsSorted().filter(s=>selectedYears.includes(sessAcademicYear(s.month)));
   if(!filtSess.length) return toast('No sessions in the selected year(s)');
@@ -1230,10 +1375,32 @@ function generateReport(){
   if(!includeCCT) trainees=trainees.filter(t=>!statusFor(t.id).some(s=>s.type==='cct'));
   if(!includeIDT) trainees=trainees.filter(t=>!statusFor(t.id).some(s=>s.type==='idt_out'));
 
-  const rows=trainees.map(t=>computeRowForSessions(t,filtSess))
-    .sort((a,b)=>a.trainee.name.localeCompare(b.trainee.name));
+  const buildSection=(title,subtitle,sessList)=>{
+    let rows=trainees.map(t=>computeRowForSessions(t,sessList));
+    if(hideNA) rows=rows.filter(r=>r.eligible>0);
+    rows.sort((a,b)=>a.trainee.name.localeCompare(b.trainee.name));
+    return {title,subtitle,sess:sessList,rows};
+  };
 
-  const html=buildReportHtml({rows,filtSess,selectedYears,includeCCT,includeIDT,showSessions,showRaw,showAdj,summaryOnly});
+  const sections=[];
+  if(layout==='combined'||layout==='both'){
+    sections.push(selectedYears.length>1
+      ? buildSection('All selected years','Combined · '+selectedYears.join(', '),filtSess)
+      : buildSection('Academic year '+selectedYears[0],acYearRange(selectedYears[0]),filtSess));
+  }
+  if(layout==='per'||layout==='both'){
+    selectedYears.forEach(y=>{
+      const list=sessionsInYear(y);
+      if(list.length) sections.push(buildSection('Academic year '+y,acYearRange(y),list));
+    });
+  }
+
+  // headline figures are always across everything selected
+  let overall=trainees.map(t=>computeRowForSessions(t,filtSess));
+  if(hideNA) overall=overall.filter(r=>r.eligible>0);
+
+  const html=buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,includeIDT,
+                              hideNA,layout,showSessions,showRaw,showAdj,summaryOnly});
   const win=window.open('','_blank');
   if(!win){ toast('Pop-up blocked — please allow pop-ups for this page'); return; }
   win.document.write(html);
@@ -1241,13 +1408,14 @@ function generateReport(){
   hideReportModal();
 }
 
-function buildReportHtml({rows,filtSess,selectedYears,includeCCT,includeIDT,showSessions,showRaw,showAdj,summaryOnly}){
+function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,includeIDT,hideNA,layout,showSessions,showRaw,showAdj,summaryOnly}){
   const now=new Date().toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'});
   const yearLabel=selectedYears.join(', ');
+  const multi=selectedYears.length>1;
 
-  const eligRows=rows.filter(r=>r.eligible>0);
+  const eligRows=overall.filter(r=>r.eligible>0);
   const avgAdj=eligRows.length?Math.round(eligRows.reduce((s,r)=>s+(r.adjPct||0),0)/eligRows.length):0;
-  const avgRaw=rows.length?Math.round(rows.reduce((s,r)=>s+r.rawPct,0)/rows.length):0;
+  const avgRaw=overall.length?Math.round(overall.reduce((s,r)=>s+r.rawPct,0)/overall.length):0;
   const below60=eligRows.filter(r=>r.adjPct!==null&&r.adjPct<60).length;
   const at100=eligRows.filter(r=>r.adjPct===100).length;
 
@@ -1259,33 +1427,61 @@ function buildReportHtml({rows,filtSess,selectedYears,includeCCT,includeIDT,show
   const stateBg={present:'#d4ead9',absent:'#fad5cb',excused:'#fdebd3',na:'#f0ede4'};
   const stateCol={present:'#2c5c3a',absent:'#a04a2c',excused:'#8a6210',na:'#b0aba0'};
 
-  let thHtml='<th>Trainee</th><th>Grade</th><th>Status</th>';
-  if(showSessions) filtSess.forEach(s=>{
-    thHtml+=`<th style="text-align:center">${escHtml(fmtMonth(s.month))}<br>`+
-      `<span style="font-weight:400;font-size:9.5px;text-transform:none;letter-spacing:0;color:#5a7060;display:block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.title)}</span></th>`;
-  });
-  thHtml+=`<th style="text-align:center">Sessions</th>`;
-  if(showRaw) thHtml+=`<th style="text-align:center">Raw %</th>`;
-  if(showAdj) thHtml+=`<th style="text-align:center">Adjusted %</th>`;
+  const headFor=sessList=>{
+    let th='<th>Trainee</th><th>Grade</th><th>Status</th>';
+    if(showSessions) sessList.forEach(s=>{
+      th+=`<th style="text-align:center">${escHtml(fmtMonth(s.month))}<br>`+
+        `<span style="font-weight:400;font-size:9.5px;text-transform:none;letter-spacing:0;color:#5a7060;display:block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.title)}</span></th>`;
+    });
+    th+=`<th style="text-align:center">Sessions</th>`;
+    if(showRaw) th+=`<th style="text-align:center">Raw %</th>`;
+    if(showAdj) th+=`<th style="text-align:center">Adjusted %</th>`;
+    return th;
+  };
 
-  const tbHtml=rows.map((r,i)=>{
-    const stat=activeStatusType(r.trainee.id);
-    const st=stat?stat.type:'active';
-    const adj=r.adjPct===null?'—':r.adjPct+'%';
-    const den=r.adjDenom>0?r.adjDenom:r.eligible;
-    const rowBg=i%2===0?'#ffffff':'#faf8f0';
-    let cells=`<td style="font-weight:600;white-space:nowrap;background:${rowBg}">${escHtml(r.trainee.name)}</td>`;
-    cells+=`<td style="color:#5a7060;white-space:nowrap;background:${rowBg}">${escHtml(latestGrade(r.trainee.id)||'—')}</td>`;
-    cells+=`<td style="background:${rowBg}"><span style="display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:${statusBg[st]};color:${statusCol[st]};white-space:nowrap">${statusLbl[st]||st}</span></td>`;
-    if(showSessions){
-      r.cells.forEach(c=>{
-        cells+=`<td style="text-align:center;padding:6px 4px;background:${rowBg}"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;background:${stateBg[c.state]};color:${stateCol[c.state]};font-weight:700;font-size:11px">${stateSym[c.state]}</span></td>`;
-      });
+  const bodyFor=sec=>{
+    if(!sec.rows.length){
+      const cols=4+(showSessions?sec.sess.length:0)+(showRaw?1:0)+(showAdj?1:0);
+      return `<tr><td colspan="${cols}" style="padding:20px;text-align:center;color:#7a7568">No trainees to show for this period.</td></tr>`;
     }
-    cells+=`<td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:600;background:${rowBg}">${r.attended}/${den}</td>`;
-    if(showRaw) cells+=`<td style="text-align:center;font-weight:700;color:${pctHex(r.rawPct)};background:${rowBg}">${r.rawPct}%</td>`;
-    if(showAdj) cells+=`<td style="text-align:center;font-weight:700;color:${pctHex(r.adjPct)};background:${rowBg}">${adj}</td>`;
-    return `<tr>${cells}</tr>`;
+    return sec.rows.map((r,i)=>{
+      const stat=activeStatusType(r.trainee.id);
+      const st=stat?stat.type:'active';
+      const adj=r.adjPct===null?'—':r.adjPct+'%';
+      const den=r.adjDenom>0?r.adjDenom:r.eligible;
+      const rowBg=i%2===0?'#ffffff':'#faf8f0';
+      let cells=`<td style="font-weight:600;white-space:nowrap;background:${rowBg}">${escHtml(r.trainee.name)}</td>`;
+      cells+=`<td style="color:#5a7060;white-space:nowrap;background:${rowBg}">${escHtml(latestGrade(r.trainee.id,sec.sess)||'—')}</td>`;
+      cells+=`<td style="background:${rowBg}"><span style="display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:${statusBg[st]};color:${statusCol[st]};white-space:nowrap">${statusLbl[st]||st}</span></td>`;
+      if(showSessions){
+        r.cells.forEach(c=>{
+          cells+=`<td style="text-align:center;padding:6px 4px;background:${rowBg}"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;background:${stateBg[c.state]};color:${stateCol[c.state]};font-weight:700;font-size:11px">${stateSym[c.state]}</span></td>`;
+        });
+      }
+      cells+=`<td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:600;background:${rowBg}">${r.attended}/${den}</td>`;
+      if(showRaw) cells+=`<td style="text-align:center;font-weight:700;color:${pctHex(r.rawPct)};background:${rowBg}">${r.rawPct}%</td>`;
+      if(showAdj) cells+=`<td style="text-align:center;font-weight:700;color:${pctHex(r.adjPct)};background:${rowBg}">${adj}</td>`;
+      return `<tr>${cells}</tr>`;
+    }).join('');
+  };
+
+  // one block per section — a separate table for each academic year
+  const sectionsHtml=sections.map(sec=>{
+    const el=sec.rows.filter(r=>r.eligible>0);
+    const sAdj=el.length?Math.round(el.reduce((s,r)=>s+(r.adjPct||0),0)/el.length):0;
+    const sRaw=sec.rows.length?Math.round(sec.rows.reduce((s,r)=>s+r.rawPct,0)/sec.rows.length):0;
+    const meta=`${escHtml(sec.subtitle)} · ${sec.sess.length} session${sec.sess.length!==1?'s':''} · `+
+      `${sec.rows.length} trainee${sec.rows.length!==1?'s':''} · mean adjusted ${sAdj}% · mean raw ${sRaw}%`;
+    return `<div class="ysection">
+      <div class="section-title">${escHtml(sec.title)}</div>
+      <div class="section-meta">${meta}</div>
+      <div class="twrap">
+        <table>
+          <thead><tr>${headFor(sec.sess)}</tr></thead>
+          <tbody>${bodyFor(sec)}</tbody>
+        </table>
+      </div>
+    </div>`;
   }).join('');
 
   const legendHtml=showSessions
@@ -1296,12 +1492,16 @@ function buildReportHtml({rows,filtSess,selectedYears,includeCCT,includeIDT,show
     : '';
 
   const filters=[];
+  filters.push(multi?`Academic years ${yearLabel}`:`Academic year ${yearLabel}`);
+  if(multi) filters.push({per:'One table per academic year',both:'Combined overview plus a table per year',combined:'Single combined table'}[layout]);
   if(!includeCCT) filters.push('Excludes trainees who have CCT\'d');
   if(!includeIDT) filters.push('Excludes trainees who left via IDT out');
+  if(hideNA) filters.push('Excludes trainees with no eligible sessions');
   if(summaryOnly) filters.push('Summary view (totals only)');
-  const filtersText=filters.length?filters.join(' · '):'All trainees and metrics included';
+  const filtersText=filters.join(' · ');
 
-  const landscapeRule=filtSess.length>7?'@page{size:A4 landscape}':'';
+  const widest=Math.max(...sections.map(sec=>sec.sess.length));
+  const landscapeRule=(showSessions?widest:0)>7?'@page{size:A4 landscape}':'';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1325,9 +1525,12 @@ body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:#f0ede
 .scard .n{font-family:Georgia,serif;font-size:27px;font-weight:700;color:#2c4d39;line-height:1}
 .scard .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:#7a7568;margin-top:5px}
 .scard.accent .n{color:#c0613a}
-.section-title{font-family:Georgia,serif;font-size:15px;font-weight:700;color:#2c4d39;margin-bottom:13px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+.section-title{font-family:Georgia,serif;font-size:15px;font-weight:700;color:#2c4d39;margin-bottom:5px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
 .section-title::after{content:'';flex:1;height:1px;background:#d8d2c0}
-.twrap{background:#fff;border:1px solid #d8d2c0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(21,33,28,.07);overflow-x:auto;margin-bottom:28px}
+.section-meta{font-size:11.5px;color:#7a7568;margin-bottom:11px}
+.ysection{margin-bottom:30px}
+.ysection:last-of-type{margin-bottom:22px}
+.twrap{background:#fff;border:1px solid #d8d2c0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(21,33,28,.07);overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:12px}
 thead th{background:#eef0e6;padding:10px 11px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#2c4d39;font-weight:700;border-bottom:2px solid #d8d2c0;white-space:nowrap}
 tbody td{padding:9px 11px;border-bottom:1px solid #ece8db;vertical-align:middle}
@@ -1341,6 +1544,8 @@ tbody tr:last-child td{border-bottom:none}
   .rpt-header{border-radius:0;margin-bottom:4px}
   .print-btn{display:none}
   .twrap{box-shadow:none;border-radius:0;overflow:visible}
+  .ysection{break-inside:auto;page-break-inside:auto}
+  .section-title{break-after:avoid;page-break-after:avoid}
   ${landscapeRule}
 }
 </style>
@@ -1351,17 +1556,17 @@ tbody tr:last-child td{border-bottom:none}
     <div class="h-left">
       <div class="h-eyebrow">ENT Regional Teaching</div>
       <div class="h-title">Attendance Report</div>
-      <div class="h-sub">Academic year${selectedYears.length>1?'s':''}: ${escHtml(yearLabel)}</div>
+      <div class="h-sub">Academic year${multi?'s':''}: ${escHtml(yearLabel)} &nbsp;·&nbsp; ${escHtml(multi?'August – July':acYearRange(selectedYears[0]))}</div>
     </div>
     <div class="h-right">
-      <div><strong>${filtSess.length}</strong> session${filtSess.length!==1?'s':''} &nbsp;·&nbsp; <strong>${rows.length}</strong> trainee${rows.length!==1?'s':''}</div>
+      <div><strong>${filtSess.length}</strong> session${filtSess.length!==1?'s':''} &nbsp;·&nbsp; <strong>${overall.length}</strong> trainee${overall.length!==1?'s':''}</div>
       <div>Generated ${escHtml(now)}</div>
     </div>
   </div>
   <div class="gold-bar"></div>
 
   <div class="stats">
-    <div class="scard"><div class="n">${rows.length}</div><div class="l">Trainees</div></div>
+    <div class="scard"><div class="n">${overall.length}</div><div class="l">Trainees</div></div>
     <div class="scard"><div class="n">${filtSess.length}</div><div class="l">Sessions</div></div>
     <div class="scard"><div class="n">${avgAdj}%</div><div class="l">Mean adjusted</div></div>
     <div class="scard"><div class="n">${avgRaw}%</div><div class="l">Mean raw</div></div>
@@ -1371,13 +1576,7 @@ tbody tr:last-child td{border-bottom:none}
 
   ${legendHtml}
 
-  <div class="section-title">Trainee Attendance</div>
-  <div class="twrap">
-    <table>
-      <thead><tr>${thHtml}</tr></thead>
-      <tbody>${tbHtml}</tbody>
-    </table>
-  </div>
+  ${sectionsHtml}
 
   <div class="rpt-footer">
     <span>${escHtml(filtersText)}</span>
@@ -1398,7 +1597,7 @@ function bootKiosk(sessId){
   document.getElementById('mainNav').style.display='none';
   const card=document.getElementById('kioskCard'); card.style.display='block';
   const s=findSession(sessId);
-  document.getElementById('kioskSess').textContent = s? `${s.month} · ${s.title}` : 'Session not found';
+  document.getElementById('kioskSess').textContent = s? `${fmtMonth(s.month)} · ${s.title}` : 'Session not found';
   const sel=document.getElementById('kTrainee');
   sel.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
   document.getElementById('kSubmit').onclick=async()=>{
