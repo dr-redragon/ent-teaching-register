@@ -47,5 +47,16 @@ window.ENT = (function () {
 
   const GRADES = ['ST3','ST4','ST5','ST6','ST7','ST8','Fellow','SAS','Other'];
 
-  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, esc, fmtDate, GRADES };
+  /* The feedback question set. Add, remove or reword freely — answers are stored
+     as jsonb, so changing this needs no database migration. Keep them 1-5 scales
+     if you want them averaged on the report. Old responses keep their old keys;
+     the report simply shows whatever keys it finds. */
+  const QUESTIONS = [
+    { key: 'content',      text: 'The content was relevant to my training' },
+    { key: 'delivery',     text: 'The teaching was clear and well delivered' },
+    { key: 'organisation', text: 'The day was well organised' },
+    { key: 'recommend',    text: 'I would recommend this session to a colleague' },
+  ];
+
+  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, esc, fmtDate, GRADES, QUESTIONS };
 })();

@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session console — ENT Regional Teaching</title>
+<link rel="stylesheet" href="assets/pages.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  main{max-width:1080px}
+  .qr-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+  .qr-box{text-align:center;border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
+  .qr-box h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-deep);margin-bottom:10px}
+  .qr-box .qr{display:inline-block;padding:10px;background:#fff;border:1px solid var(--line);border-radius:10px}
+  .qr-box .url{font-size:11.5px;color:var(--muted);word-break:break-all;margin:10px 0 8px}
+  .stat-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:18px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat .n{font-family:Georgia,serif;font-size:26px;font-weight:700;color:var(--moss-deep);line-height:1}
+  .stat .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+  thead th{background:#eef0e6;text-align:left;padding:10px 12px;font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--moss-deep);font-weight:700;border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:9px 12px;border-bottom:1px solid #ece8db;vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap}
+  .tag.yes{background:#dcebe0;color:var(--moss-deep)}
+  .tag.no{background:#f0ede4;color:var(--muted)}
+  .tag.wait{background:#f7e8d4;color:#8a6210}
+  .bar{height:8px;border-radius:99px;background:#e7e3d4;overflow:hidden;min-width:80px}
+  .bar > span{display:block;height:100%;background:var(--moss);border-radius:99px}
+  .qrow{display:grid;grid-template-columns:1fr auto 110px 46px;gap:10px;align-items:center;padding:7px 0;font-size:13.5px}
+  .comment{border-left:3px solid var(--gold);padding:9px 0 9px 13px;margin-bottom:12px;font-size:14px}
+  .comment .when{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .chip{display:inline-block;background:#eef0e6;color:var(--moss-deep);border-radius:99px;padding:3px 11px;font-size:12.5px;font-weight:600;margin:0 6px 6px 0}
+  .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+  .muted-row{color:var(--muted)}
+  @media print{
+    .no-print{display:none!important}
+    body{background:#fff}
+    .card{box-shadow:none;break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead no-print">
+  <div class="masthead-inner">
+    <span class="mark">The Register</span>
+    <span class="sub">Session console</span>
+  </div>
+</header>
+
+<main>
+  <div id="loading" class="lede">Loading the session…</div>
+
+  <!-- unlock -->
+  <div class="card no-print" id="unlock" style="display:none;max-width:520px">
+    <h1>Organiser access</h1>
+    <p class="lede">The attendee list and the certificate controls are behind your organiser token
+      (the <code>ORGANISER_TOKEN</code> secret set on the Supabase project).</p>
+    <div id="unlockError"></div>
+    <div class="field">
+      <label class="fld" for="token">Organiser token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="paste your token">
+    </div>
+    <button class="btn primary" id="unlockBtn">Unlock</button>
+    <p class="helper">Stored in this browser only, so you only paste it once per device.</p>
+  </div>
+
+  <div id="console" style="display:none">
+    <div class="card">
+      <h1 id="title"></h1>
+      <p class="lede" id="subtitle"></p>
+      <div class="qr-row no-print">
+        <div class="qr-box">
+          <h3>Sign in — show this on the day</h3>
+          <div class="qr" id="qrCheckin"></div>
+          <div class="url" id="urlCheckin"></div>
+          <button class="btn ghost sm" data-copy="checkin">Copy link</button>
+        </div>
+        <div class="qr-box">
+          <h3>Feedback — share at the end</h3>
+          <div class="qr" id="qrFeedback"></div>
+          <div class="url" id="urlFeedback"></div>
+          <button class="btn ghost sm" data-copy="feedback">Copy link</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- attendees -->
+    <div class="card no-print">
+      <h2>Attendance and certificates</h2>
+      <div id="actionResult"></div>
+      <div class="stat-strip" id="attendeeStats"></div>
+      <div class="table-wrap">
+        <table id="attendeeTable">
+          <thead><tr>
+            <th style="width:34px"><input type="checkbox" id="selectAll" style="width:auto" title="Select all"></th>
+            <th>Trainee</th><th>Grade</th><th>Email</th>
+            <th>Signed in</th><th>Feedback</th><th>Certificate</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button class="btn primary sm" id="pushAll">Email feedback link to everyone outstanding</button>
+        <button class="btn ghost sm" id="pushSelected">Email selected only</button>
+        <button class="btn ghost sm" id="previewCert">Preview certificate PDF</button>
+        <button class="btn ghost sm" id="refresh">Refresh</button>
+      </div>
+      <p class="helper" id="emailWarning"></p>
+    </div>
+
+    <!-- report -->
+    <div class="card">
+      <h2>Feedback report</h2>
+      <p class="lede">Aggregated from anonymous responses. Nothing here can be traced to a person —
+        the feedback table holds no name, email or attendee id, and the submission date is stored
+        without a time.</p>
+      <div class="stat-strip" id="reportStats"></div>
+      <div id="reportBody"></div>
+      <div class="actions no-print">
+        <button class="btn ghost sm" onclick="window.print()">Print / save as PDF</button>
+        <button class="btn ghost sm" id="downloadCsv">Download responses (CSV)</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="assets/config.js"></script>
+<script>
+/* Organiser console for one session: the links to hand out, who has signed in,
+   who still owes feedback, who has a certificate — and the anonymous report. */
+const params = new URLSearchParams(location.search);
+const SESSION_ID = params.get('s') || '';
+const TOKEN_KEY = 'ent_organiser_token';
+const el = (id) => document.getElementById(id);
+
+let session = null, attendees = [], responses = [], stats = null, token = '';
+
+const baseUrl = () => location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
+const checkinUrl = () => baseUrl() + 'checkin.html?s=' + encodeURIComponent(SESSION_ID);
+const feedbackUrl = () => baseUrl() + 'feedback.html?s=' + encodeURIComponent(SESSION_ID);
+
+function fail(msg, where) {
+  (where || el('loading')).innerHTML = `<div class="notice bad">${ENT.esc(msg)}</div>`;
+}
+function note(msg, kind) {
+  el('actionResult').innerHTML = `<div class="notice ${kind || 'info'}">${ENT.esc(msg)}</div>`;
+}
+
+async function boot() {
+  if (!SESSION_ID) return fail('No session in the link. Open this page from the register.');
+  let rows;
+  try {
+    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location');
+  } catch (e) { return fail('Could not reach the register.'); }
+  session = rows && rows[0];
+  if (!session) return fail('That session no longer exists.');
+
+  token = localStorage.getItem(TOKEN_KEY) || '';
+  el('loading').style.display = 'none';
+  if (token) { await open(); } else { el('unlock').style.display = 'block'; }
+
+  el('unlockBtn').onclick = async () => {
+    token = el('token').value.trim();
+    if (!token) return;
+    try {
+      await ENT.api('session-status', { session_id: SESSION_ID }, token);
+      localStorage.setItem(TOKEN_KEY, token);
+      el('unlock').style.display = 'none';
+      await open();
+    } catch (err) {
+      el('unlockError').innerHTML = `<div class="notice bad">${ENT.esc(err.message)}</div>`;
+    }
+  };
+}
+
+async function open() {
+  el('console').style.display = 'block';
+  el('title').textContent = session.title;
+  el('subtitle').textContent = ENT.fmtDate(session.session_date) + (session.location ? ' · ' + session.location : '');
+
+  drawQr('qrCheckin', checkinUrl());
+  drawQr('qrFeedback', feedbackUrl());
+  el('urlCheckin').textContent = checkinUrl();
+  el('urlFeedback').textContent = feedbackUrl();
+  document.querySelectorAll('[data-copy]').forEach((b) => {
+    b.onclick = async () => {
+      const url = b.dataset.copy === 'checkin' ? checkinUrl() : feedbackUrl();
+      try { await navigator.clipboard.writeText(url); b.textContent = 'Copied'; }
+      catch (e) { b.textContent = 'Copy failed'; }
+      setTimeout(() => { b.textContent = 'Copy link'; }, 1600);
+    };
+  });
+
+  el('refresh').onclick = loadAll;
+  el('pushAll').onclick = () => pushFeedbackLink(null);
+  el('pushSelected').onclick = () => pushFeedbackLink(selectedIds());
+  el('previewCert').onclick = previewCertificate;
+  el('selectAll').onchange = () => {
+    document.querySelectorAll('#attendeeTable tbody input[type=checkbox]')
+      .forEach((c) => { c.checked = el('selectAll').checked; });
+  };
+  el('downloadCsv').onclick = downloadCsv;
+
+  await loadAll();
+}
+
+function drawQr(id, url) {
+  const box = el(id);
+  box.innerHTML = '';
+  if (typeof QRCode === 'undefined') { box.textContent = 'QR unavailable offline'; return; }
+  new QRCode(box, { text: url, width: 190, height: 190, colorDark: '#2c4d39', colorLight: '#ffffff' });
+}
+
+async function loadAll() {
+  await Promise.all([loadAttendees(), loadReport()]);
+}
+
+async function loadAttendees() {
+  try {
+    const res = await ENT.api('session-status', { session_id: SESSION_ID }, token);
+    attendees = res.attendees || [];
+    el('emailWarning').textContent = res.email_configured
+      ? ''
+      : 'Email is not configured yet (RESEND_API_KEY is unset on the Supabase project), so nothing can be emailed and certificates are not being issued.';
+    renderAttendees();
+  } catch (err) {
+    fail(err.message, el('actionResult'));
+  }
+}
+
+function renderAttendees() {
+  const checkedIn = attendees.filter((a) => a.checked_in_at).length;
+  const gave = attendees.filter((a) => a.feedback_completed).length;
+  const certs = attendees.filter((a) => a.certificate_sent_at).length;
+  const owed = attendees.filter((a) => a.checked_in_at && !a.certificate_sent_at).length;
+  el('attendeeStats').innerHTML = `
+    <div class="stat"><div class="n">${checkedIn}</div><div class="l">Signed in</div></div>
+    <div class="stat"><div class="n">${gave}</div><div class="l">Feedback given</div></div>
+    <div class="stat"><div class="n">${certs}</div><div class="l">Certificates sent</div></div>
+    <div class="stat"><div class="n">${owed}</div><div class="l">Still awaiting one</div></div>`;
+
+  const tb = document.querySelector('#attendeeTable tbody');
+  if (!attendees.length) {
+    tb.innerHTML = `<tr><td colspan="8" class="muted-row" style="padding:22px;text-align:center">Nobody has signed in yet.</td></tr>`;
+    return;
+  }
+  tb.innerHTML = attendees.map((a) => {
+    const cert = a.certificate_sent_at
+      ? `<span class="tag yes">Sent</span>`
+      : a.feedback_completed
+        ? `<span class="tag wait">Due</span>`
+        : `<span class="tag no">Gated</span>`;
+    return `<tr>
+      <td><input type="checkbox" value="${ENT.esc(a.id)}" style="width:auto"></td>
+      <td style="font-weight:600;white-space:nowrap">${ENT.esc(a.name)}</td>
+      <td>${ENT.esc(a.grade || '—')}</td>
+      <td class="muted-row" style="font-size:12.5px">${ENT.esc(a.email)}</td>
+      <td>${a.checked_in_at ? '<span class="tag yes">Yes</span>' : '<span class="tag no">No</span>'}</td>
+      <td>${a.feedback_completed ? '<span class="tag yes">Given</span>' : '<span class="tag no">Not yet</span>'}</td>
+      <td>${cert}</td>
+      <td><button class="btn ghost sm" data-resend="${ENT.esc(a.id)}">${a.certificate_sent_at ? 'Resend' : 'Send now'}</button></td>
+    </tr>`;
+  }).join('');
+
+  tb.querySelectorAll('[data-resend]').forEach((b) => {
+    b.onclick = async () => {
+      const id = b.dataset.resend;
+      const person = attendees.find((a) => a.id === id) || {};
+      if (!person.feedback_completed &&
+          !confirm(`${person.name} has not given feedback yet. Send their certificate anyway?`)) return;
+      b.disabled = true; b.textContent = 'Sending…';
+      try {
+        const res = await ENT.api('send-certificate', { attendee_id: id, force: true }, token);
+        note(certificateMessage(person.name, res.certificate), res.certificate === 'sent' ? 'info' : 'warn');
+      } catch (err) { note(err.message, 'bad'); }
+      await loadAttendees();
+    };
+  });
+}
+
+function certificateMessage(name, status) {
+  const map = {
+    sent: `Certificate emailed to ${name}.`,
+    already_sent: `${name} already has their certificate.`,
+    skipped_not_checked_in: `${name} has no sign-in recorded, so no certificate was issued.`,
+    skipped_no_feedback: `${name} has not given feedback yet, so no certificate was issued.`,
+    email_not_configured: `Nothing sent: email is not configured yet (RESEND_API_KEY is unset).`,
+    failed_email: `The email to ${name} failed to send — check the Resend dashboard.`,
+    failed_pdf: `The certificate for ${name} could not be generated.`,
+  };
+  return map[status] || `Certificate status for ${name}: ${status}`;
+}
+
+function selectedIds() {
+  return [...document.querySelectorAll('#attendeeTable tbody input[type=checkbox]:checked')].map((c) => c.value);
+}
+
+async function pushFeedbackLink(ids) {
+  if (ids && !ids.length) return note('Tick the people you want to email first.', 'warn');
+  const btn = ids ? el('pushSelected') : el('pushAll');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await ENT.api('email-feedback-link',
+      Object.assign({ session_id: SESSION_ID }, ids ? { attendee_ids: ids } : {}), token);
+    const failed = (res.failures || []).length;
+    note(`Feedback link emailed to ${res.sent} of ${res.considered} outstanding attendee${res.considered === 1 ? '' : 's'}.` +
+         (failed ? ` ${failed} failed to send.` : ''), failed ? 'warn' : 'info');
+  } catch (err) { note(err.message, 'bad'); }
+  btn.disabled = false; btn.textContent = label;
+}
+
+async function previewCertificate() {
+  const btn = el('previewCert');
+  btn.disabled = true;
+  try {
+    const res = await ENT.api('certificate-preview', { session_id: SESSION_ID, name: 'Dr Example Trainee' }, token);
+    if (res.blob) window.open(URL.createObjectURL(res.blob), '_blank');
+  } catch (err) { note(err.message, 'bad'); }
+  btn.disabled = false;
+}
+
+/* ---------------------------------------------------------------- report */
+
+async function loadReport() {
+  try {
+    const [s, r] = await Promise.all([
+      ENT.rest('session_stats?session_id=eq.' + encodeURIComponent(SESSION_ID)),
+      ENT.rest('feedback_public?session_id=eq.' + encodeURIComponent(SESSION_ID) + '&order=submitted_on.desc'),
+    ]);
+    stats = s && s[0];
+    responses = r || [];
+    renderReport();
+  } catch (err) {
+    el('reportBody').innerHTML = `<div class="notice bad">${ENT.esc(err.message)}</div>`;
+  }
+}
+
+const mean = (nums) => nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+const fmt1 = (n) => n === null ? '—' : n.toFixed(1);
+
+// A rough aid, not a claim: the words that come up most across the comments.
+const STOPWORDS = new Set(('the a an and or but of to in on for with was were is are be been it its this that they them their we our i my you your ' +
+  'me he she his her at as by from so very more most much really quite just also had have has do does did not no yes if then than there here ' +
+  'session sessions teaching day would could should about all some any what which when who how why get got well good great').split(' '));
+
+function themeChips() {
+  const counts = new Map();
+  responses.forEach((r) => {
+    const words = String(r.comments || '').toLowerCase().match(/[a-z][a-z'-]{2,}/g) || [];
+    new Set(words).forEach((w) => {                      // count each comment once per word
+      if (STOPWORDS.has(w)) return;
+      counts.set(w, (counts.get(w) || 0) + 1);
+    });
+  });
+  const top = [...counts.entries()].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  if (!top.length) return '';
+  return `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 9px">Recurring words</h3>` +
+    top.map(([w, n]) => `<span class="chip">${ENT.esc(w)} <span style="opacity:.6">${n}</span></span>`).join('') +
+    `<p class="helper">A word count across the comments, nothing cleverer — the comments themselves are above.</p>`;
+}
+
+function renderReport() {
+  const attendeeCount = stats ? stats.checked_in_count : 0;
+  const overall = mean(responses.map((r) => r.overall_rating).filter((n) => typeof n === 'number'));
+  const rate = attendeeCount ? Math.round(responses.length / attendeeCount * 100) : 0;
+
+  el('reportStats').innerHTML = `
+    <div class="stat"><div class="n">${responses.length}</div><div class="l">Responses</div></div>
+    <div class="stat"><div class="n">${attendeeCount}</div><div class="l">Signed in</div></div>
+    <div class="stat"><div class="n">${attendeeCount ? rate + '%' : '—'}</div><div class="l">Response rate</div></div>
+    <div class="stat"><div class="n">${fmt1(overall)}</div><div class="l">Mean overall (of 5)</div></div>`;
+
+  if (!responses.length) {
+    el('reportBody').innerHTML = `<div class="notice info">No feedback yet for this session.</div>`;
+    return;
+  }
+
+  // distribution of the overall rating
+  const dist = [1, 2, 3, 4, 5].map((n) => responses.filter((r) => r.overall_rating === n).length);
+  const maxDist = Math.max(...dist, 1);
+  const distHtml = `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:4px 0 9px">Overall rating</h3>` +
+    [5, 4, 3, 2, 1].map((n) => {
+      const c = dist[n - 1];
+      return `<div class="qrow"><span>${n} ★</span><span></span>
+        <span class="bar"><span style="width:${Math.round(c / maxDist * 100)}%"></span></span>
+        <span style="text-align:right;font-variant-numeric:tabular-nums">${c}</span></div>`;
+    }).join('');
+
+  // per-question means, for whatever keys actually appear in the answers
+  const keys = [...new Set(responses.flatMap((r) => Object.keys(r.answers || {})))];
+  const labels = Object.fromEntries(ENT.QUESTIONS.map((q) => [q.key, q.text]));
+  const qHtml = keys.length
+    ? `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 9px">By question</h3>` +
+      keys.map((k) => {
+        const vals = responses.map((r) => (r.answers || {})[k]).filter((v) => typeof v === 'number');
+        const m = mean(vals);
+        return `<div class="qrow">
+          <span>${ENT.esc(labels[k] || k)}</span>
+          <span class="muted-row" style="font-size:12px">${vals.length} repl${vals.length === 1 ? 'y' : 'ies'}</span>
+          <span class="bar"><span style="width:${m ? Math.round(m / 5 * 100) : 0}%"></span></span>
+          <span style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmt1(m)}</span>
+        </div>`;
+      }).join('')
+    : '';
+
+  const withComments = responses.filter((r) => (r.comments || '').trim());
+  const cHtml = withComments.length
+    ? `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 12px">Comments (${withComments.length})</h3>` +
+      withComments.map((r) => `<div class="comment">${ENT.esc(r.comments)}
+        <div class="when">${ENT.esc(ENT.fmtDate(r.submitted_on))}${r.overall_rating ? ' · rated ' + r.overall_rating + '/5' : ''}</div></div>`).join('')
+    : `<p class="helper" style="margin-top:20px">No written comments.</p>`;
+
+  el('reportBody').innerHTML = distHtml + qHtml + cHtml + themeChips();
+}
+
+function downloadCsv() {
+  const keys = [...new Set(responses.flatMap((r) => Object.keys(r.answers || {})))];
+  const cell = (v) => { const t = String(v ?? ''); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const lines = [['Submitted', 'Overall', ...keys, 'Comments'].map(cell).join(',')];
+  responses.forEach((r) => {
+    lines.push([r.submitted_on, r.overall_rating ?? '', ...keys.map((k) => (r.answers || {})[k] ?? ''), r.comments || '']
+      .map(cell).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'feedback-' + (session.session_date || '') + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+boot();
+</script>
+</body>
+</html>
