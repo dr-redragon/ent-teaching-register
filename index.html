@@ -230,6 +230,22 @@
   body.kiosk nav,body.kiosk header .cohort-pill{display:none}
   .kiosk-card{max-width:460px;margin:40px auto;padding:0 16px}
   .login-error{background:#fbeee9;border:1px solid #e0b09a;color:#9c3d1c;border-radius:9px;padding:10px 13px;font-size:13.5px;margin-bottom:14px}
+  .att-list{border:1px solid var(--line);border-radius:10px;max-height:280px;overflow:auto;margin-top:8px}
+  .att-row{display:grid;grid-template-columns:22px 1.4fr auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid #ece8db;font-size:13px}
+  .att-row:last-child{border-bottom:none}
+  .att-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--moss);cursor:pointer}
+  .att-row .who{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .att-row .who small{font-weight:400;color:var(--muted)}
+  .att-tags{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .att-tag{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px;white-space:nowrap}
+  .att-tag.yes{background:#dcebe0;color:var(--moss-deep)}
+  .att-tag.no{background:#f0ede4;color:var(--muted)}
+  .att-tag.wait{background:#f7e8d4;color:#8a6210}
+  .att-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px}
+  .notice{border-radius:9px;padding:9px 12px;font-size:13px}
+  .notice.info{background:#eef2ea;border:1px solid #cfdcd2;color:var(--moss-deep)}
+  .notice.warn{background:#fbf3ee;border:1px solid #e4c3ad;color:#8d4526}
+  .notice.bad{background:#fbeee9;border:1px solid #e0b09a;color:#9c3d1c}
 </style>
 </head>
 <body>
@@ -434,11 +450,12 @@
     <div class="grid2" style="align-items:start">
       <div class="card pad">
         <label class="fld">Add trainee</label>
-        <div class="inline-form" style="grid-template-columns:1fr auto">
+        <div class="inline-form" style="grid-template-columns:1.2fr 1.3fr auto">
           <div><input id="trName" placeholder="Full name"></div>
+          <div><input id="trEmail" type="email" placeholder="Email (optional)"></div>
           <div><button class="btn primary" id="trAdd">Add</button></div>
         </div>
-        <p class="helper">Grade is captured each time a trainee checks in, since it changes between rotations.</p>
+        <p class="helper">Grade is captured each time a trainee checks in, since it changes between rotations. Email is used to send certificates — trainees without one are asked to add it when they next sign in.</p>
         <div id="trList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
         <button type="button" class="former-toggle" id="formerToggle">
           <span id="formerToggleLabel">Former trainees</span>
@@ -1208,14 +1225,80 @@ function renderCloudPanel(){
        <button class="btn ghost sm" id="cloudCopyFeedback">Copy feedback link</button>
        <button class="btn ghost sm" id="cloudSync">Pull sign-ins into the register</button>
      </div>
-     <p class="helper" id="cloudSyncMsg">The QR above now opens the live sign-in page for this session.</p>`;
+     <p class="helper" id="cloudSyncMsg">The QR above now opens the live sign-in page for this session.</p>
+
+     <div class="att-head">
+       <label class="fld" style="margin:0">Feedback &amp; certificates</label>
+       <div class="row-actions">
+         <button class="btn primary sm" id="fbPushAll">Email feedback to all outstanding</button>
+         <button class="btn ghost sm" id="fbPushSel">Email selected</button>
+       </div>
+     </div>
+     <p class="helper" style="margin-top:6px">Sends the feedback form to checked-in trainees by email. Completing it emails their certificate automatically. Those who&rsquo;ve already given feedback are skipped.</p>
+     <div id="fbResult"></div>
+     <div class="att-list" id="cloudAttendees"><div class="empty" style="padding:16px">Loading attendees&hellip;</div></div>`;
 
   document.getElementById('cloudCopyFeedback').onclick=()=>{
     navigator.clipboard?.writeText(pageUrl('feedback.html',s.cloudId));
     toast('Feedback link copied');
   };
   document.getElementById('cloudSync').onclick=()=>syncCloudCheckins(s);
+  document.getElementById('fbPushAll').onclick=()=>pushCloudFeedback(s,null);
+  document.getElementById('fbPushSel').onclick=()=>pushCloudFeedback(s,cloudSelectedIds());
   loadCloudCounts(s);
+  loadCloudAttendees(s);
+}
+
+// The per-session attendee list with checkboxes, shown inline in the Check-in
+// tab. Reuses the same session-status / email-feedback-link actions the session
+// console uses -- this is the same machinery, surfaced where the day is run.
+let cloudAttendees=[];
+async function loadCloudAttendees(s){
+  const box=document.getElementById('cloudAttendees'); if(!box) return;
+  try{
+    const res=await callApi('session-status',{session_id:s.cloudId});
+    cloudAttendees=(res.attendees||[]).filter(a=>a.checked_in_at);
+    if(!res.email_configured){
+      box.innerHTML='<div class="empty" style="padding:16px">Email is not configured yet, so feedback links and certificates cannot be sent. See docs/SETUP.md (RESEND_API_KEY).</div>';
+      document.getElementById('fbPushAll').disabled=true;
+      document.getElementById('fbPushSel').disabled=true;
+      return;
+    }
+    if(!cloudAttendees.length){
+      box.innerHTML='<div class="empty" style="padding:16px">Nobody has signed in yet.</div>';
+      return;
+    }
+    box.innerHTML=cloudAttendees.map(a=>{
+      const fb=a.feedback_completed?'<span class="att-tag yes">Feedback in</span>':'<span class="att-tag no">No feedback</span>';
+      const cert=a.certificate_sent_at?'<span class="att-tag yes">Cert sent</span>'
+        :a.feedback_completed?'<span class="att-tag wait">Cert due</span>':'<span class="att-tag no">Gated</span>';
+      return '<label class="att-row">'+
+        '<input type="checkbox" value="'+escHtml(a.id)+'" '+(a.feedback_completed?'disabled':'')+'>'+
+        '<span class="who">'+escHtml(a.name)+' <small>'+escHtml(a.grade||'')+'</small></span>'+
+        '<span class="att-tags">'+fb+cert+'</span></label>';
+    }).join('');
+  }catch(err){
+    box.innerHTML='<div class="empty" style="padding:16px">'+escHtml(err.message)+'</div>';
+  }
+}
+function cloudSelectedIds(){
+  return [...document.querySelectorAll('#cloudAttendees input[type=checkbox]:checked')].map(c=>c.value);
+}
+async function pushCloudFeedback(s, ids){
+  const rEl=document.getElementById('fbResult');
+  if(ids && !ids.length){ rEl.innerHTML='<div class="notice warn" style="margin-top:10px">Tick at least one person, or use \u201call outstanding\u201d.</div>'; return; }
+  const btn=ids?document.getElementById('fbPushSel'):document.getElementById('fbPushAll');
+  const label=btn.textContent; btn.disabled=true; btn.textContent='Sending...';
+  try{
+    const res=await callApi('email-feedback-link', Object.assign({session_id:s.cloudId}, ids?{attendee_ids:ids}:{}));
+    const failed=(res.failures||[]).length;
+    rEl.innerHTML='<div class="notice '+(failed?'warn':'info')+'" style="margin-top:10px">Feedback link emailed to '+res.sent+' of '+res.considered+' outstanding.'+
+      (failed?' '+failed+' failed to send.':'')+'</div>';
+    await loadCloudAttendees(s);
+  }catch(err){
+    rEl.innerHTML='<div class="notice bad" style="margin-top:10px">'+escHtml(err.message)+'</div>';
+  }
+  btn.disabled=false; btn.textContent=label;
 }
 
 async function publishSession(s){
@@ -1257,16 +1340,19 @@ async function syncCloudCheckins(s){
   try{
     const res=await callApi('session-status',{session_id:s.cloudId});
     const byName=new Map(DB.trainees.map(t=>[t.name.trim().toLowerCase(), t]));
-    let added=0; const unmatched=[];
+    let added=0, emailed=0; const unmatched=[];
     (res.attendees||[]).filter(a=>a.checked_in_at).forEach(a=>{
       const t=byName.get(String(a.name).trim().toLowerCase());
       if(!t){ unmatched.push(a.name); return; }
       const key=attKey(t.id,s.id);
       if(!DB.attendance[key]){ DB.attendance[key]={grade:a.grade||''}; added++; }
       else if(a.grade && !DB.attendance[key].grade){ DB.attendance[key].grade=a.grade; }
+      // backfill a missing roster email from what they signed in with
+      if(a.email && !(t.email||'').trim()){ t.email=a.email; emailed++; }
     });
-    if(added) await saveDB();
+    if(added||emailed) await saveDB();
     const summary = `${added} new sign-in${added===1?'':'s'} added to the register.` +
+      (emailed? ` ${emailed} email${emailed===1?'':'s'} added to the roster.` : '') +
       (unmatched.length? ` Not on the roster, so skipped: ${unmatched.join(', ')}.` : '');
     renderAll();                       // re-renders this panel, so report afterwards
     setCloudSyncMsg(summary);
@@ -1423,10 +1509,28 @@ function traineeItemHtml(t){
   const badge = isFormerTrainee(t.id)
     ? ` <span class="badge ${st.type}">${st.type==='cct'?'CCT':'IDT out'}${(st.start||st.end)?' · '+fmtMonth(st.start||st.end):''}</span>`
     : '';
-  return `<div class="list-item"><div><span class="li-main">${escHtml(t.name)}</span> <span class="grade-tag">${escHtml(latestGrade(t.id))}</span>${badge}</div>
-    <span class="kebab" data-deltr="${t.id}">✕</span></div>`;
+  const email = (t.email||'').trim();
+  const emailLine = email
+    ? `<span class="li-sub">✉ ${escHtml(email)}</span>`
+    : `<span class="li-sub" style="color:var(--clay)">✉ no email on file</span>`;
+  return `<div class="list-item">
+    <div><div><span class="li-main">${escHtml(t.name)}</span> <span class="grade-tag">${escHtml(latestGrade(t.id))}</span>${badge}</div>${emailLine}</div>
+    <div class="row-actions">
+      <span class="kebab" data-editem="${t.id}">Email</span>
+      <span class="kebab" data-deltr="${t.id}">✕</span>
+    </div></div>`;
 }
-function wireTraineeDeletes(container){
+function wireTraineeRowActions(container){
+  container.querySelectorAll('[data-editem]').forEach(b=>b.onclick=async()=>{
+    const t=findTrainee(b.dataset.editem); if(!t)return;
+    const cur=(t.email||'').trim();
+    const v=prompt(`Email for ${t.name}:`, cur);
+    if(v===null) return;                       // cancelled
+    const e=v.trim();
+    if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return toast('That doesn’t look like a valid email');
+    t.email = e;                               // '' clears it
+    await saveDB(); renderManage(); toast(e?'Email saved':'Email cleared');
+  });
   container.querySelectorAll('[data-deltr]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.deltr; const t=findTrainee(id);
     if(!confirm(`Remove ${t?t.name:'this trainee'}? This deletes their attendance, excuses and status. This can't be undone.`)) return;
@@ -1446,7 +1550,7 @@ function renderManage(){
   const tl=document.getElementById('trList');
   tl.innerHTML = current.map(traineeItemHtml).join('') ||
     (all.length? `<div class="empty">Everyone is a former trainee — expand the list below.</div>` : `<div class="empty">No trainees.</div>`);
-  wireTraineeDeletes(tl);
+  wireTraineeRowActions(tl);
 
   const toggle=document.getElementById('formerToggle');
   const formerBox=document.getElementById('formerList');
@@ -1457,7 +1561,7 @@ function renderManage(){
   formerBox.classList.toggle('open', formerListOpen);
   formerBox.innerHTML = former.map(traineeItemHtml).join('') ||
     `<div class="empty">Nobody here yet — set a trainee's status to CCT or IDT out on the Long-term status tab and they'll move here.</div>`;
-  wireTraineeDeletes(formerBox);
+  wireTraineeRowActions(formerBox);
   toggle.onclick=()=>{ formerListOpen=!formerListOpen; toggle.classList.toggle('open',formerListOpen); formerBox.classList.toggle('open',formerListOpen); };
   const sl=document.getElementById('seList');
   const seItem = s=>`
@@ -1561,7 +1665,10 @@ function wire(){
   document.getElementById('trAdd').onclick=async()=>{
     const n=document.getElementById('trName').value.trim();
     if(!n)return toast('Enter a name');
-    DB.trainees.push({id:uid(),name:n}); document.getElementById('trName').value='';
+    const emEl=document.getElementById('trEmail'); const em=emEl.value.trim();
+    if(em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return toast('That doesn’t look like a valid email');
+    DB.trainees.push({id:uid(),name:n,email:em||''});
+    document.getElementById('trName').value=''; emEl.value='';
     await saveDB(); renderAll(); toast('Trainee added');
   };
   document.getElementById('seAdd').onclick=async()=>{
