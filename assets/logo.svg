@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <defs>
+    <path id="topArc" d="M 73,239 A 235,235 0 0 1 527,239" fill="none"/>
+    <path id="botArc" d="M 73,361 A 235,235 0 0 0 527,361" fill="none"/>
+  </defs>
+
+  <circle cx="300" cy="300" r="292" fill="#ffffff" stroke="#173a63" stroke-width="7"/>
+  <circle cx="300" cy="300" r="276" fill="none" stroke="#173a63" stroke-width="2"/>
+
+  <clipPath id="ringClip"><circle cx="300" cy="320" r="205"/></clipPath>
+  <g clip-path="url(#ringClip)">
+
+    <!-- ===== county block: Lancashire / Greater Manchester / Merseyside / Cheshire ===== -->
+    <path d="M 205,208
+             C 235,200 262,206 278,222
+             C 284,228 284,236 278,241
+             C 288,248 291,260 284,269
+             C 293,278 294,292 285,301
+             C 294,310 294,324 284,332
+             C 292,342 289,356 278,363
+             C 285,374 282,387 270,392
+             C 275,402 271,414 259,418
+             C 243,428 220,429 202,419
+             C 186,412 176,398 175,381
+             C 161,375 153,360 157,345
+             C 145,336 140,320 147,305
+             C 136,294 135,276 145,263
+             C 136,251 139,233 152,222
+             C 163,210 183,203 205,208 Z"
+          fill="#173a63"/>
+
+    <path d="M 148,246 L 210,238 L 262,240" fill="none" stroke="#ffffff" stroke-width="2.2"/>
+    <path d="M 141,288 L 200,282 L 260,286" fill="none" stroke="#ffffff" stroke-width="2.2"/>
+    <path d="M 156,354 L 210,354 L 258,364" fill="none" stroke="#ffffff" stroke-width="2.2"/>
+
+    <text x="208" y="220" font-family="Georgia,'Times New Roman',serif" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".2">LANCASHIRE</text>
+    <text x="203" y="259" font-family="Georgia,'Times New Roman',serif" font-size="10.5" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".15">GREATER</text>
+    <text x="203" y="272" font-family="Georgia,'Times New Roman',serif" font-size="10.5" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".15">MANCHESTER</text>
+    <text x="204" y="317" font-family="Georgia,'Times New Roman',serif" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".2">MERSEYSIDE</text>
+    <text x="212" y="393" font-family="Georgia,'Times New Roman',serif" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".2">CHESHIRE</text>
+
+    <!-- ===== head / neck profile, facing right ===== -->
+    <path d="M 328,193
+             C 355,191 378,199 393,215
+             L 407,231
+             C 411,238 409,245 401,248
+             L 424,266
+             C 434,276 438,289 432,299
+             L 419,305
+             C 424,314 419,323 409,325
+             C 401,327 396,334 399,342
+             L 382,365
+             C 375,376 376,388 384,398
+             C 393,409 396,423 391,437
+             C 386,452 373,464 356,467
+             L 305,467
+             C 297,467 291,461 291,453
+             C 291,436 285,420 274,407
+             C 264,394 261,378 268,364
+             C 257,354 253,339 259,325
+             C 248,316 244,300 252,286
+             C 242,274 242,257 252,243
+             C 264,220 288,203 316,196
+             C 320,194 324,193 328,193 Z"
+          fill="#6f9ccb"/>
+
+    <!-- ear -->
+    <path d="M 273,264 C 288,257 302,265 302,280 C 303,294 289,303 276,297 C 265,292 262,275 273,264 Z"
+          fill="#6f9ccb" stroke="#ffffff" stroke-width="2.4"/>
+    <path d="M 277,272 C 285,270 290,276 286,283 C 283,288 275,287 274,281" fill="none" stroke="#ffffff" stroke-width="1.8"/>
+
+    <!-- nasal passage -->
+    <path d="M 401,242 L 421,262 C 424,272 418,281 407,281 L 393,278" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M 396,278 C 405,282 412,290 413,300" fill="none" stroke="#ffffff" stroke-width="1.8"/>
+
+    <!-- pharynx corridor -->
+    <path d="M 383,308 C 389,336 383,362 367,382 C 357,396 353,408 357,420" fill="none" stroke="#ffffff" stroke-width="2.4"/>
+
+    <!-- trachea rings -->
+    <g fill="none" stroke="#ffffff" stroke-width="2.4">
+      <path d="M 333,428 C 347,422 365,422 377,429"/>
+      <path d="M 331,445 C 345,439 363,439 375,446"/>
+      <path d="M 331,462 C 345,456 363,456 373,463"/>
+    </g>
+
+    <!-- lip line -->
+    <path d="M 373,331 L 386,327" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  </g>
+
+  <circle cx="65" cy="300" r="5.5" fill="#173a63"/>
+  <circle cx="535" cy="300" r="5.5" fill="#173a63"/>
+
+  <text font-family="Georgia,'Times New Roman',serif" font-size="33" font-weight="700" fill="#173a63" letter-spacing="2.2">
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle">NORTH WEST ENT</textPath>
+  </text>
+  <text font-family="Georgia,'Times New Roman',serif" font-size="23.5" font-weight="700" fill="#173a63" letter-spacing="1.4">
+    <textPath href="#botArc" startOffset="50%" text-anchor="middle">REGIONAL TRAINEES SOCIETY</textPath>
+  </text>
+</svg>
