@@ -129,6 +129,7 @@
         <button class="btn primary sm" id="pushAll">Email feedback link to everyone outstanding</button>
         <button class="btn ghost sm" id="pushSelected">Email selected only</button>
         <button class="btn ghost sm" id="previewCert">Preview certificate PDF</button>
+        <a class="btn ghost sm" id="editForm" href="#">Edit the feedback form</a>
         <button class="btn ghost sm" id="refresh">Refresh</button>
       </div>
       <p class="helper" id="emailWarning"></p>
@@ -184,7 +185,7 @@ async function boot() {
   if (!SESSION_ID) return fail('No session in the link. Open this page from the register.');
   let rows;
   try {
-    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location');
+    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,form');
   } catch (e) { return fail('Could not reach the register.'); }
   session = rows && rows[0];
   if (!session) return fail('That session no longer exists.');
@@ -228,6 +229,7 @@ async function open() {
   el('title').textContent = session.title;
   el('subtitle').textContent = ENT.fmtDate(session.session_date) + (session.location ? ' · ' + session.location : '');
 
+  el('editForm').href = 'form-editor.html?s=' + encodeURIComponent(SESSION_ID);
   drawQr('qrCheckin', checkinUrl());
   drawQr('qrFeedback', feedbackUrl());
   el('urlCheckin').textContent = checkinUrl();
@@ -427,6 +429,12 @@ async function loadReport() {
   }
 }
 
+// The question this answer key belongs to, from the session's own form.
+function questionDef(key) {
+  const qs = (session && session.form && session.form.questions) || [];
+  return qs.find((q) => q.id === key) || null;
+}
+
 const mean = (nums) => nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
 const fmt1 = (n) => n === null ? '—' : n.toFixed(1);
 
@@ -478,20 +486,50 @@ function renderReport() {
         <span style="text-align:right;font-variant-numeric:tabular-nums">${c}</span></div>`;
     }).join('');
 
-  // per-question means, for whatever keys actually appear in the answers
+  // Per-question results, for whatever keys actually appear in the answers.
+  // Wording comes from this session's own form -- which is why the form is
+  // stored per session: rewording a question no longer relabels historic
+  // answers, and a question deleted from the form still reports what it got.
   const keys = [...new Set(responses.flatMap((r) => Object.keys(r.answers || {})))];
-  const labels = Object.fromEntries(ENT.QUESTIONS.map((q) => [q.key, q.text]));
   const qHtml = keys.length
     ? `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 9px">By question</h3>` +
       keys.map((k) => {
-        const vals = responses.map((r) => (r.answers || {})[k]).filter((v) => typeof v === 'number');
-        const m = mean(vals);
-        return `<div class="qrow">
-          <span>${ENT.esc(labels[k] || k)}</span>
-          <span class="muted-row" style="font-size:12px">${vals.length} repl${vals.length === 1 ? 'y' : 'ies'}</span>
-          <span class="bar"><span style="width:${m ? Math.round(m / 5 * 100) : 0}%"></span></span>
-          <span style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmt1(m)}</span>
-        </div>`;
+        const def = questionDef(k);
+        const label = ENT.esc(def ? def.text : k);
+        const vals = responses.map((r) => (r.answers || {})[k]);
+        const nums = vals.filter((v) => typeof v === 'number');
+
+        // A 1-5 scale averages; a choice or checkbox question is a tally; free
+        // text is listed rather than reduced to a number.
+        if (nums.length && (!def || def.type === 'scale')) {
+          const m = mean(nums);
+          return `<div class="qrow">
+            <span>${label}</span>
+            <span class="muted-row" style="font-size:12px">${nums.length} repl${nums.length === 1 ? 'y' : 'ies'}</span>
+            <span class="bar"><span style="width:${m ? Math.round(m / 5 * 100) : 0}%"></span></span>
+            <span style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmt1(m)}</span>
+          </div>`;
+        }
+
+        const picks = vals.flatMap((v) => Array.isArray(v) ? v : (v == null ? [] : [v]));
+        if (def && (def.type === 'choice' || def.type === 'checkbox')) {
+          const tally = {};
+          picks.forEach((v) => { tally[v] = (tally[v] || 0) + 1; });
+          const top = Math.max(1, ...Object.values(tally));
+          return `<div style="margin:14px 0 4px"><div style="font-weight:600;font-size:13.5px;margin-bottom:6px">${label}</div>` +
+            (def.options || Object.keys(tally)).map((o) => {
+              const c = tally[o] || 0;
+              return `<div class="qrow"><span style="padding-left:10px">${ENT.esc(o)}</span><span></span>
+                <span class="bar"><span style="width:${Math.round(c / top * 100)}%"></span></span>
+                <span style="text-align:right;font-variant-numeric:tabular-nums">${c}</span></div>`;
+            }).join('') + '</div>';
+        }
+
+        const texts = picks.filter((v) => typeof v === 'string' && v.trim());
+        if (!texts.length) return '';
+        return `<div style="margin:14px 0 4px"><div style="font-weight:600;font-size:13.5px;margin-bottom:6px">${label}` +
+          ` <span class="muted-row" style="font-weight:400;font-size:12px">(${texts.length})</span></div>` +
+          texts.map((t) => `<div class="comment">${ENT.esc(t)}</div>`).join('') + '</div>';
       }).join('')
     : '';
 
