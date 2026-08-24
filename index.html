@@ -40,7 +40,9 @@
     border-bottom:3px solid var(--gold);
   }
   .masthead-row{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;justify-content:space-between;max-width:1180px;margin:0 auto}
-  .brand{display:flex;align-items:center;gap:12px}
+  .brand{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:8px}
+  a.brand:hover .mark{color:#fff}
+  a.brand:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
   .brand-logo{height:44px;width:44px;flex-shrink:0;display:block}
   .brand .mark{
     font-family:Georgia,"Times New Roman",serif;
@@ -123,6 +125,25 @@
   #cellTip .tip-state{display:inline-block;width:8px;height:8px;border-radius:50%}
   #cellTip .s-present{background:#8fd3a3}#cellTip .s-excused{background:#e8a878}
   #cellTip .s-absent{background:#cfcabb}#cellTip .s-na{background:#9aa093}
+  /* Touch equivalent of the hover tip: a real, dismissible popover. A hover tip
+     is unusable on a phone — the tap that shows it never produces a mouseout, so
+     it sticks — and the same tap silently flipped the attendance underneath it. */
+  #cellPop{position:fixed;z-index:210;display:none;background:var(--moss-deep);color:#f6f4ec;
+    border-radius:12px;padding:13px 15px;font-size:13px;line-height:1.45;width:min(268px,calc(100vw - 24px));
+    box-shadow:0 10px 34px rgba(21,33,28,.34)}
+  #cellPop.show{display:block}
+  #cellPop .pop-sess{font-weight:700;font-size:14px;margin-bottom:2px}
+  #cellPop .pop-month{color:#b8cbbd;font-weight:600;letter-spacing:.03em;font-size:12px}
+  #cellPop .pop-row{margin-top:8px;display:flex;align-items:center;gap:8px}
+  #cellPop .pop-state{display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  #cellPop .s-present{background:#8fd3a3}#cellPop .s-excused{background:#e8a878}
+  #cellPop .s-absent{background:#cfcabb}#cellPop .s-na{background:#9aa093}
+  #cellPop .pop-actions{display:flex;gap:8px;margin-top:13px}
+  #cellPop button{appearance:none;font:inherit;font-weight:600;font-size:13px;cursor:pointer;
+    border-radius:8px;padding:9px 12px;border:1px solid rgba(246,244,236,.35);
+    background:transparent;color:#f6f4ec;flex:1}
+  #cellPop button.go{background:#f6f4ec;color:var(--moss-deep);border-color:#f6f4ec}
+  #cellPop .pop-note{margin-top:10px;color:#b8cbbd;font-size:12px}
   /* custom month picker */
   .month-input{position:relative;display:flex;align-items:stretch}
   .month-input input{padding-right:38px}
@@ -252,11 +273,11 @@
 
 <header>
   <div class="masthead-row">
-    <div class="brand">
-      <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="brand-logo">
+    <a class="brand" href="index.html" title="Back to the register home">
+      <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="brand-logo" width="44" height="44">
       <span class="mark">The Register</span>
       <span class="sub">ENT Regional Teaching</span>
-    </div>
+    </a>
     <span class="row-actions" style="gap:12px">
       <span class="cohort-pill" id="cohortPill"></span>
       <button class="btn ghost sm" id="logoutBtn" style="display:none">Log out</button>
@@ -571,6 +592,7 @@
 </div>
 <div class="toast" id="toast"></div>
 <div id="cellTip"></div>
+<div id="cellPop" role="dialog" aria-label="Attendance for this session"></div>
 
 <script>
 /* ============================================================
@@ -896,13 +918,23 @@ function pctColor(p){
   return 'var(--bad)';
 }
 
-/* custom hover tooltip for attendance cells (delegated, attached once) */
+/* Attendance cell details.
+   Mouse: a hover tip, and a click toggles attendance straight away.
+   Touch: hovering doesn't exist, so the first tap opens a real popover showing
+   the same details WITHOUT changing anything; changing it takes a second,
+   deliberate tap on a button inside. The popover closes on an outside tap,
+   Escape, scroll or resize, so it can't get stranded on screen. */
+const STATE_CLASS={Attended:'s-present',Excused:'s-excused',Missed:'s-absent','Not eligible':'s-na'};
+
+// Which input opened this — set on pointerdown, before any click fires.
+let lastPointerTouch=false;
+addEventListener('pointerdown',e=>{ lastPointerTouch = e.pointerType==='touch'||e.pointerType==='pen'; },true);
+
 let cellTipWired=false;
 function attachCellTip(tb){
   if(cellTipWired) return;          // delegation survives re-renders
   cellTipWired=true;
   const tip=document.getElementById('cellTip');
-  const stateClass={Attended:'s-present',Excused:'s-excused',Missed:'s-absent','Not eligible':'s-na'};
   function place(e){
     const pad=14, w=tip.offsetWidth, h=tip.offsetHeight;
     let x=e.clientX+pad, y=e.clientY+pad;
@@ -911,18 +943,92 @@ function attachCellTip(tb){
     tip.style.left=x+'px'; tip.style.top=y+'px';
   }
   tb.addEventListener('mouseover',e=>{
+    if(lastPointerTouch) return;    // a tap must never leave a tip stuck on screen
     const d=e.target.closest('.dot'); if(!d||!tb.contains(d)) return;
     const grade=d.dataset.grade?` · ${d.dataset.grade}`:'';
     tip.innerHTML=
       `<div class="tip-sess">${d.dataset.sess}</div>`+
       `<div class="tip-month">${d.dataset.month}</div>`+
-      `<div class="tip-row"><span class="tip-state ${stateClass[d.dataset.state]||''}"></span>`+
+      `<div class="tip-row"><span class="tip-state ${STATE_CLASS[d.dataset.state]||''}"></span>`+
       `${d.dataset.name} — ${d.dataset.state}${grade}</div>`;
     tip.classList.add('show'); place(e);
   });
   tb.addEventListener('mousemove',e=>{ if(tip.classList.contains('show')) place(e); });
   tb.addEventListener('mouseout',e=>{
     const d=e.target.closest('.dot'); if(d) tip.classList.remove('show');
+  });
+}
+
+/* ---- touch popover ---- */
+let popOpenFor=null;               // {t,s} of the dot the popover belongs to
+
+function closeCellPop(){
+  const pop=document.getElementById('cellPop');
+  if(!pop||!popOpenFor) return;
+  pop.classList.remove('show');
+  popOpenFor=null;
+  document.removeEventListener('pointerdown',popOutside,true);
+  removeEventListener('keydown',popKey,true);
+  removeEventListener('scroll',closeCellPop,true);
+  removeEventListener('resize',closeCellPop);
+}
+function popOutside(e){ if(!e.target.closest('#cellPop')) closeCellPop(); }
+function popKey(e){ if(e.key==='Escape') closeCellPop(); }
+
+function placeCellPop(pop,dot){
+  const r=dot.getBoundingClientRect(), gap=10;
+  const w=pop.offsetWidth, h=pop.offsetHeight;
+  let x=r.left+r.width/2-w/2;
+  x=Math.max(12,Math.min(x,innerWidth-w-12));
+  let y=r.bottom+gap;
+  if(y+h>innerHeight-12) y=Math.max(12,r.top-h-gap);
+  pop.style.left=x+'px'; pop.style.top=y+'px';
+}
+
+function openCellPop(dot){
+  const pop=document.getElementById('cellPop');
+  document.getElementById('cellTip').classList.remove('show');
+  const present = dot.dataset.state==='Attended';
+  const na = dot.classList.contains('na');
+  const excused = dot.dataset.state==='Excused';
+  const grade = dot.dataset.grade? ' · '+escHtml(dot.dataset.grade) : '';
+
+  let actions;
+  if(na){
+    actions = `<div class="pop-note">Not in the programme for this session, so it doesn’t count either way.</div>`;
+  } else {
+    actions = `<div class="pop-actions">`+
+      `<button type="button" class="go" data-act="toggle">${present?'Mark absent':'Mark attended'}</button>`+
+      `<button type="button" data-act="close">Close</button></div>`+
+      (excused?`<div class="pop-note">Excused — this session is already out of their denominator.</div>`:'');
+  }
+
+  pop.innerHTML =
+    `<div class="pop-sess">${escHtml(dot.dataset.sess)}</div>`+
+    `<div class="pop-month">${escHtml(dot.dataset.month)}</div>`+
+    `<div class="pop-row"><span class="pop-state ${STATE_CLASS[dot.dataset.state]||''}"></span>`+
+    `<span>${escHtml(dot.dataset.name)} — ${escHtml(dot.dataset.state)}${grade}</span></div>`+
+    actions;
+
+  popOpenFor={t:dot.dataset.t,s:dot.dataset.s};
+  pop.classList.add('show');
+  placeCellPop(pop,dot);
+
+  pop.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+    if(b.dataset.act==='close') return closeCellPop();
+    const k=attKey(popOpenFor.t,popOpenFor.s);
+    if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
+    closeCellPop();
+    await saveDB(); renderAll();
+  });
+
+  // added on the next frame so the tap that opened this doesn't close it
+  requestAnimationFrame(()=>{
+    if(!popOpenFor) return;
+    document.addEventListener('pointerdown',popOutside,true);
+    addEventListener('keydown',popKey,true);
+    addEventListener('scroll',closeCellPop,true);
+    addEventListener('resize',closeCellPop);
   });
 }
 
@@ -1062,7 +1168,10 @@ function wireDashTables(){
     const th=e.target.closest('th[data-sort]');
     if(th){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=1;} renderDash(); return; }
     const d=e.target.closest('.dot');
-    if(d && !d.classList.contains('na')){
+    if(!d) return;
+    // On touch, show the details first; the change needs a second, deliberate tap.
+    if(lastPointerTouch){ openCellPop(d); return; }
+    if(!d.classList.contains('na')){
       const k=attKey(d.dataset.t,d.dataset.s);
       if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
       await saveDB(); renderAll();
@@ -1584,6 +1693,7 @@ function renderManage(){
 }
 
 function renderAll(){
+  closeCellPop();                    // never leave a popover pointing at a stale cell
   const yrs=availableAcademicYears();
   document.getElementById('cohortPill').textContent =
     `${DB.trainees.length} trainees · ${DB.sessions.length} teaching days` +
@@ -1601,13 +1711,25 @@ function toast(msg){
 /* ============================================================
    EVENTS
    ============================================================ */
+// Tabs are addressable as #dash / #checkin / ... so other pages (the session
+// console) can link straight back to the tab you came from.
+function showTab(name){
+  const tab=document.querySelector('.tab[data-tab="'+name+'"]');
+  const panel=document.getElementById('panel-'+name);
+  if(!tab||!panel) return false;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  tab.classList.add('active'); panel.classList.add('active');
+  return true;
+}
+function applyTabHash(){ return showTab((location.hash||'').replace(/^#/,'')); }
+
 function wire(){
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+    showTab(t.dataset.tab);
+    history.replaceState(null,'','#'+t.dataset.tab);
   });
+  addEventListener('hashchange', applyTabHash);
   document.getElementById('dashSearch').oninput=renderDash;
   document.getElementById('dashHideNA').onchange=renderDash;
   wireDashTables();
@@ -2077,6 +2199,7 @@ async function bootApp(){
   initMonthPickers();
   updateStatusHelper();
   renderAll();
+  applyTabHash();                      // honour index.html#checkin and friends
 }
 
 (async function(){
