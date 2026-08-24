@@ -86,8 +86,10 @@ function showError(message) {
 
 async function loadRoster() {
   try {
-    const rows = await ENT.rest('register_store?id=eq.default&select=data');
-    const data = rows && rows[0] && rows[0].data;
+    // public_roster() is a SECURITY DEFINER function exposing just id/name for
+    // trainees and id/month/title for sessions — register_store itself is
+    // locked to the organiser login, this is the narrow anon-safe substitute.
+    const data = await ENT.rpc('public_roster', {});
     const list = (data && data.trainees) || [];
     return list.slice().sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
@@ -134,37 +136,18 @@ async function boot() {
 }
 
 // Mirror the check-in into the register blob so the organiser's grid stays live.
+// record_local_checkin() is a SECURITY DEFINER function that patches just the
+// one attendance key — register_store itself no longer grants anon any access.
 // Best effort only: the Supabase attendee row is the record that matters, and the
 // organiser console can re-sync at any time.
 async function mirrorToRegister(traineeId, grade) {
   if (!traineeId || !session.local_id) return;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const rows = await ENT.rest('register_store?id=eq.default&select=data,updated_at');
-      const row = rows && rows[0];
-      if (!row || !row.data) return;
-      const db = row.data;
-      db.attendance = db.attendance || {};
-      const key = traineeId + '|' + session.local_id;
-      if (db.attendance[key] && db.attendance[key].grade === grade) return;   // already recorded
-      db.attendance[key] = { grade: grade || '' };
-      const res = await fetch(ENT.SUPABASE_URL + '/rest/v1/register_store?id=eq.default&updated_at=eq.' +
-          encodeURIComponent(row.updated_at), {
-        method: 'PATCH',
-        headers: {
-          apikey: ENT.SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + ENT.SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation',
-        },
-        body: JSON.stringify({ data: db, updated_at: new Date().toISOString() }),
-      });
-      const written = await res.json().catch(() => []);
-      if (res.ok && written.length) return;      // our write landed
-      // someone else wrote first — re-read and try again
-    } catch (e) {
-      return;
-    }
+  try {
+    await ENT.rpc('record_local_checkin', {
+      p_trainee_id: traineeId, p_session_id: session.local_id, p_grade: grade || '',
+    });
+  } catch (e) {
+    // best effort — the attendees table write already succeeded
   }
 }
 
