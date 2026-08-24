@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
 <title>ENT Teaching Register</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
     --ink:#15211c;
@@ -274,7 +275,7 @@
 <header>
   <div class="masthead-row">
     <a class="brand" href="index.html" title="Back to the register home">
-      <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="brand-logo" width="44" height="44">
+      <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="brand-logo" width="44" height="44">
       <span class="mark">The Register</span>
       <span class="sub">ENT Regional Teaching</span>
     </a>
@@ -604,7 +605,7 @@
 const STORE_KEY = 'ent_register_v1';
 const SUPABASE_URL = 'https://ecyhvubwcqqghumnyxuu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjeWh2dWJ3Y3FxZ2h1bW55eHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzQ3NzEsImV4cCI6MjA5NzE1MDc3MX0.0aI5Efr6h5UzUY3V-eJz1vihmntIMKqG3-_QMXq4cxY';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let sb = null;    // created at boot, once the deferred supabase-js has run
 
 /* ============================================================
    AUTH — the register (this file) is for organisers only, gated by a
@@ -1249,7 +1250,21 @@ function renderRecentCheckins(){
       `<div class="pill-row">${present.map(t=>{const g=gradeAt(t.id,s.id);return `<span class="badge active">${t.name}${g?' · '+g:''}</span>`;}).join('')}</div>`
     : `<div class="helper">No check-ins yet for this session.</div>`;
 }
-function drawQR(){
+/* The QR library is ~20KB and is needed only once a teaching day is on screen,
+   so it is fetched on demand rather than blocking every page load. */
+let qrLib=null;
+function loadQrLib(){
+  if(window.QRCode) return Promise.resolve(true);
+  if(qrLib) return qrLib;
+  qrLib = new Promise(resolve=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    sc.onload=()=>resolve(true); sc.onerror=()=>resolve(false);
+    document.head.appendChild(sc);
+  });
+  return qrLib;
+}
+async function drawQR(){
   const box=document.getElementById('qrcode'); box.innerHTML='';
   if(!activeSession) return;
   const base = location.href.split('?')[0].split('#')[0];
@@ -1259,8 +1274,11 @@ function drawQR(){
   const url = s && s.cloudId
     ? base.replace(/[^\/]*$/, '') + 'checkin.html?s=' + encodeURIComponent(s.cloudId)
     : base + '?form=' + encodeURIComponent(activeSession);
-  new QRCode(box,{text:url,width:230,height:230,colorDark:'#2c4d39',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
   box.dataset.url = url;
+  if(!await loadQrLib()){ box.textContent='QR unavailable offline — use “Copy form link”'; return; }
+  if(box.dataset.url!==url) return;           // a newer render already ran
+  box.innerHTML='';
+  new QRCode(box,{text:url,width:230,height:230,colorDark:'#2c4d39',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
 }
 
 /* ============================================================
@@ -2295,7 +2313,15 @@ async function bootApp(){
   applyTabHash();                      // honour index.html#checkin and friends
 }
 
-(async function(){
+// Deferred scripts finish before DOMContentLoaded, so supabase-js is guaranteed
+// to be there by the time this runs -- without it having blocked first paint.
+function whenReady(fn){
+  if(document.readyState==='loading') addEventListener('DOMContentLoaded',fn,{once:true});
+  else fn();
+}
+
+whenReady(async function(){
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){
     // Anonymous sign-in for an unpublished session's QR — never gated by login.
@@ -2311,7 +2337,7 @@ async function bootApp(){
   sb.auth.onAuthStateChange((event)=>{
     if(event==='SIGNED_OUT') showLogin();
   });
-})();
+});
 </script>
 </body>
 </html>
