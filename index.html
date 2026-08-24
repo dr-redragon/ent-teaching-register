@@ -201,6 +201,15 @@
   .group-head{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-deep);
     background:#f1f3ea;border-radius:7px;padding:5px 9px;margin:14px 0 6px}
   .group-head:first-child{margin-top:0}
+  .former-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    appearance:none;border:1px dashed var(--line);background:#faf8f0;cursor:pointer;padding:10px 13px;
+    border-radius:9px;font:inherit;font-size:13px;font-weight:600;color:var(--muted);margin-top:14px}
+  .former-toggle:hover{border-color:var(--moss);color:var(--moss-deep)}
+  .former-toggle .chev{transition:transform .15s}
+  .former-toggle.open .chev{transform:rotate(180deg)}
+  .former-list{display:none;margin-top:8px}
+  .former-list.open{display:block}
+  .former-list .list-item{opacity:.82}
   /* ---- report modal ---- */
   .yr-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border:1.5px solid var(--line);border-radius:99px;cursor:pointer;font-size:13.5px;font-weight:600;background:#fff;transition:.12s;user-select:none}
   .yr-pill input{display:none}
@@ -404,6 +413,11 @@
         </div>
         <p class="helper">Grade is captured each time a trainee checks in, since it changes between rotations.</p>
         <div id="trList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
+        <button type="button" class="former-toggle" id="formerToggle">
+          <span id="formerToggleLabel">Former trainees</span>
+          <span class="chev">▾</span>
+        </button>
+        <div id="formerList" class="former-list" style="max-height:380px;overflow:auto"></div>
       </div>
       <div class="card pad">
         <label class="fld">Add teaching session</label>
@@ -1301,12 +1315,23 @@ function updateStatusHelper(){
 }
 
 /* ---- manage ---- */
-function renderManage(){
-  const tl=document.getElementById('trList');
-  tl.innerHTML = DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`
-    <div class="list-item"><div><span class="li-main">${t.name}</span> <span class="grade-tag">${latestGrade(t.id)}</span></div>
-    <span class="kebab" data-deltr="${t.id}">✕</span></div>`).join('') || `<div class="empty">No trainees.</div>`;
-  tl.querySelectorAll('[data-deltr]').forEach(b=>b.onclick=async()=>{
+// A trainee is "former" once their status is CCT (completed training) or an
+// IDT transfer out — they no longer appear in the working roster, but nothing
+// about their record changes, so past years' reports are unaffected.
+function isFormerTrainee(traineeId){
+  const st=activeStatusType(traineeId);
+  return !!st && (st.type==='cct' || st.type==='idt_out');
+}
+function traineeItemHtml(t){
+  const st=activeStatusType(t.id);
+  const badge = isFormerTrainee(t.id)
+    ? ` <span class="badge ${st.type}">${st.type==='cct'?'CCT':'IDT out'}${(st.start||st.end)?' · '+fmtMonth(st.start||st.end):''}</span>`
+    : '';
+  return `<div class="list-item"><div><span class="li-main">${escHtml(t.name)}</span> <span class="grade-tag">${escHtml(latestGrade(t.id))}</span>${badge}</div>
+    <span class="kebab" data-deltr="${t.id}">✕</span></div>`;
+}
+function wireTraineeDeletes(container){
+  container.querySelectorAll('[data-deltr]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.deltr; const t=findTrainee(id);
     if(!confirm(`Remove ${t?t.name:'this trainee'}? This deletes their attendance, excuses and status. This can't be undone.`)) return;
     DB.trainees=DB.trainees.filter(t=>t.id!==id);
@@ -1315,6 +1340,29 @@ function renderManage(){
     Object.keys(DB.attendance).forEach(k=>{if(k.startsWith(id+'|'))delete DB.attendance[k];});
     await saveDB();renderAll();toast('Trainee removed');
   });
+}
+let formerListOpen=false;
+function renderManage(){
+  const all=DB.trainees.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const current=all.filter(t=>!isFormerTrainee(t.id));
+  const former=all.filter(t=>isFormerTrainee(t.id));
+
+  const tl=document.getElementById('trList');
+  tl.innerHTML = current.map(traineeItemHtml).join('') ||
+    (all.length? `<div class="empty">Everyone is a former trainee — expand the list below.</div>` : `<div class="empty">No trainees.</div>`);
+  wireTraineeDeletes(tl);
+
+  const toggle=document.getElementById('formerToggle');
+  const formerBox=document.getElementById('formerList');
+  toggle.style.display = former.length? 'flex' : 'none';
+  document.getElementById('formerToggleLabel').textContent =
+    `Former trainees (CCT'd / transferred out) · ${former.length}`;
+  toggle.classList.toggle('open', formerListOpen);
+  formerBox.classList.toggle('open', formerListOpen);
+  formerBox.innerHTML = former.map(traineeItemHtml).join('') ||
+    `<div class="empty">Nobody here yet — set a trainee's status to CCT or IDT out on the Long-term status tab and they'll move here.</div>`;
+  wireTraineeDeletes(formerBox);
+  toggle.onclick=()=>{ formerListOpen=!formerListOpen; toggle.classList.toggle('open',formerListOpen); formerBox.classList.toggle('open',formerListOpen); };
   const sl=document.getElementById('seList');
   const seItem = s=>`
     <div class="list-item"><div><span class="li-main">${escHtml(fmtMonth(s.month))}</span> <span class="li-sub">${escHtml(s.title)}</span></div>
