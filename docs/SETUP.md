@@ -125,7 +125,9 @@ without the logo.
 
 1. **Publish the session.** Register → *Check-in / QR* → pick the teaching day →
    set the real date and location → **Publish this session**. The QR on that
-   tab now opens the live sign-in page.
+   tab now opens the live sign-in page. The session starts with a copy of the
+   feedback-form template; **Edit the feedback form** changes it for this day
+   only (see below).
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
    and sign in. If we already hold their email (see below) they can leave that
    field blank; if not, they're asked to add one so their certificate can reach
@@ -144,6 +146,34 @@ without the logo.
 5. **Read the feedback** in the console's report: response rate, mean overall,
    the rating spread, a mean per question, and the comments. Print it or take
    the CSV.
+
+### Editing the feedback form
+
+The questions trainees are asked are no longer fixed. There are two things you
+can edit, and the difference matters:
+
+- **The template.** *Check-in / QR* → **Edit the feedback form template** (or
+  open `form-editor.html` directly). Every session published from now on starts
+  from this. Sessions that already exist are not touched.
+- **One session's form.** *Check-in / QR* → pick the day → **Edit the feedback
+  form**, or the same button in the session console. Changes here affect that
+  session only. **Save as the template too** does both at once, and **Reset to
+  the template** throws the session's own copy away and goes back to inheriting.
+
+The editor works like a form builder: add a question, pick its type (rating 1–5,
+multiple choice, checkboxes, short answer, long answer), reorder with ↑/↓,
+duplicate, delete, mark it required — with a live preview of what trainees will
+see beside it. Two questions are built in and cannot be deleted: the overall 1–5
+rating (it is stored in its own column and drives the report) and a free-text
+box.
+
+**Why the form is stored per session, not once globally.** Answers are keyed by
+question id, and the wording travels with the session. So rewording a question
+next year does not silently relabel last year's answers, and a question you
+delete still shows its results on the sessions that asked it.
+
+None of this touches anonymity: a form is a set of questions, not an answer.
+`feedback_responses` still holds no name, no email and no attendee id.
 
 ### Chasing an unexplained absence
 
@@ -203,6 +233,9 @@ Supporting details:
   organiser.
 - Browsers cannot read `feedback_responses` at all, and cannot call
   `record_feedback()` directly.
+- Browsers have `select` on `sessions` and `form_templates` and nothing else —
+  no insert, update, delete or truncate. Every write goes through the Edge
+  Function as `service_role`.
 - One response per person per session: a second submission is refused, so the
   gate cannot be used to stuff the results.
 

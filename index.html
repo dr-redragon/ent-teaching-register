@@ -1574,7 +1574,9 @@ function renderCloudPanel(){
        </div>
        <div class="row-actions" style="margin-top:12px">
          <button class="btn primary sm" id="cloudPublish">Publish this session</button>
-       </div>`;
+         <a class="btn ghost sm" href="form-editor.html" target="_blank" rel="noopener">Edit the feedback form template</a>
+       </div>
+       <p class="helper">A published session starts from the template, then can be edited on its own.</p>`;
     document.getElementById('cloudPublish').onclick=()=>publishSession(s);
     return;
   }
@@ -1591,9 +1593,12 @@ function renderCloudPanel(){
      </div>
      <div class="row-actions" style="margin-top:12px">
        <button class="btn ghost sm" id="cloudCopyFeedback">Copy feedback link</button>
-       <button class="btn ghost sm" id="cloudSync">Pull sign-ins into the register</button>
+       <a class="btn ghost sm" href="${pageUrl('form-editor.html',s.cloudId)}" target="_blank" rel="noopener">Edit the feedback form</a>
+       <button class="btn ghost sm" id="cloudSync">Re-sync sign-ins</button>
      </div>
-     <p class="helper" id="cloudSyncMsg">The QR above now opens the live sign-in page for this session.</p>
+     <p class="helper" id="cloudSyncMsg">Sign-ins land in the attendance grid by themselves. Re-sync is the repair
+       button: use it if someone signed in while offline, if you added them to the roster after they signed in, or to
+       pull in emails and grades people typed on the day.</p>
 
      <div class="att-head">
        <label class="fld" style="margin:0">Feedback &amp; certificates</label>

@@ -57,6 +57,121 @@ function feedbackUrl(sessionId: string) {
   return `${APP_BASE_URL}/feedback.html?s=${encodeURIComponent(sessionId)}`;
 }
 
+/* ------------------------------------------------------------- feedback forms */
+
+// A form is a question list. Validated here rather than trusted from the editor,
+// because the same shape is later read by the anonymous feedback page and by the
+// report, and a malformed one would break both for everybody.
+const QUESTION_TYPES = new Set(["scale", "short", "long", "choice", "checkbox"]);
+
+interface Question {
+  id: string; type: string; text: string; required: boolean;
+  options?: string[]; lowLabel?: string; highLabel?: string;
+  placeholder?: string; locked?: boolean;
+}
+
+function cleanForm(raw: unknown): { form: { title: string; questions: Question[] } } | { error: string } {
+  if (!raw || typeof raw !== "object") return { error: "The form is missing" };
+  const src = raw as Record<string, unknown>;
+  const list = Array.isArray(src.questions) ? src.questions : null;
+  if (!list) return { error: "The form has no questions" };
+  if (!list.length) return { error: "A form needs at least one question" };
+  if (list.length > 40) return { error: "That is more than 40 questions" };
+
+  const seen = new Set<string>();
+  const questions: Question[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const q = item as Record<string, unknown>;
+    const type = String(q.type ?? "scale");
+    if (!QUESTION_TYPES.has(type)) return { error: `Unknown question type: ${type}` };
+
+    // Answers are keyed by id, so a duplicate would silently overwrite another
+    // question's answers -- and an id that changes orphans historic responses.
+    let id = cleanText(q.id, 40).replace(/[^a-zA-Z0-9_]/g, "") || `q${questions.length + 1}`;
+    while (seen.has(id)) id = `${id}_${questions.length + 1}`;
+    seen.add(id);
+
+    const text = cleanText(q.text, 300);
+    if (!text) return { error: "Every question needs some text" };
+
+    const out: Question = { id, type, text, required: q.required === true };
+    if (type === "choice" || type === "checkbox") {
+      const opts = (Array.isArray(q.options) ? q.options : [])
+        .map((o) => cleanText(o, 120)).filter(Boolean).slice(0, 20);
+      if (opts.length < 2) return { error: `"${text}" needs at least two options` };
+      out.options = opts;
+    }
+    if (type === "scale") {
+      out.lowLabel = cleanText(q.lowLabel, 40) || "Strongly disagree";
+      out.highLabel = cleanText(q.highLabel, 40) || "Strongly agree";
+    }
+    if (type === "short" || type === "long") {
+      const ph = cleanText(q.placeholder, 120);
+      if (ph) out.placeholder = ph;
+    }
+    if (q.locked === true) out.locked = true;
+    questions.push(out);
+  }
+  if (!questions.length) return { error: "A form needs at least one question" };
+  return { form: { title: cleanText(src.title, 120) || "Session feedback", questions } };
+}
+
+async function templateForm(db: SupabaseClient) {
+  const { data } = await db.from("form_templates").select("form").eq("id", "default").maybeSingle();
+  return data?.form ?? null;
+}
+
+// Returns the form the editor should open: the session's own if it has one,
+// otherwise the shared template it would inherit.
+async function handleGetForm(db: SupabaseClient, body: Record<string, unknown>) {
+  const sessionId = cleanText(body.session_id, 64);
+  const template = await templateForm(db);
+  if (!sessionId) return json({ ok: true, form: template, source: "template", template });
+
+  const { data: session } = await db.from("sessions")
+    .select("id,title,session_date,form").eq("id", sessionId).maybeSingle();
+  if (!session) return json({ error: "Unknown session" }, 404);
+  return json({
+    ok: true,
+    session: { id: session.id, title: session.title, session_date: session.session_date },
+    form: session.form ?? template,
+    source: session.form ? "session" : "template",
+    template,
+  });
+}
+
+async function handleSaveForm(db: SupabaseClient, body: Record<string, unknown>) {
+  const sessionId = cleanText(body.session_id, 64);
+  const asTemplate = body.as_template === true;
+  const reset = body.reset === true;
+
+  // "Reset to the template" simply drops the session's own copy, so it goes back
+  // to inheriting -- and keeps inheriting future template edits.
+  if (reset) {
+    if (!sessionId) return json({ error: "Missing session" }, 400);
+    const { error } = await db.from("sessions").update({ form: null }).eq("id", sessionId);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true, form: await templateForm(db), source: "template" });
+  }
+
+  const checked = cleanForm(body.form);
+  if ("error" in checked) return json({ error: checked.error }, 400);
+
+  if (asTemplate) {
+    const { error } = await db.from("form_templates")
+      .upsert({ id: "default", form: checked.form, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    if (error) return json({ error: error.message }, 500);
+  }
+  if (sessionId) {
+    const { error } = await db.from("sessions").update({ form: checked.form }).eq("id", sessionId);
+    if (error) return json({ error: error.message }, 500);
+  }
+  if (!sessionId && !asTemplate) return json({ error: "Nothing to save to" }, 400);
+
+  return json({ ok: true, form: checked.form, source: sessionId ? "session" : "template", saved_template: asTemplate });
+}
+
 /* ---------------------------------------------------------------- certificates */
 
 interface CertificateTarget {
@@ -240,8 +355,10 @@ async function handleCreateSession(db: SupabaseClient, body: Record<string, unkn
     }
   }
 
+  // A brand-new session starts from the shared template, so it has a form the
+  // moment it is published and can be edited from there without touching it.
   const { data, error } = await db.from("sessions")
-    .insert({ title, session_date: sessionDate, location, local_id: localId })
+    .insert({ title, session_date: sessionDate, location, local_id: localId, form: await templateForm(db) })
     .select("*").single();
   if (error) return json({ error: error.message }, 500);
   return json({ ok: true, session: data, created: true });
@@ -413,7 +530,7 @@ async function handleCertificatePreview(db: SupabaseClient, body: Record<string,
 
 const ORGANISER_ACTIONS = new Set([
   "create-session", "session-status", "send-certificate", "email-feedback-link", "certificate-preview",
-  "chase-absences",
+  "chase-absences", "get-form", "save-form",
 ]);
 
 Deno.serve(async (req) => {
@@ -443,6 +560,8 @@ Deno.serve(async (req) => {
       case "email-feedback-link": return await handleEmailFeedbackLink(db, body);
       case "certificate-preview": return await handleCertificatePreview(db, body);
       case "chase-absences":      return await handleChaseAbsences(db, body);
+      case "get-form":            return await handleGetForm(db, body);
+      case "save-form":           return await handleSaveForm(db, body);
       default:                    return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {
