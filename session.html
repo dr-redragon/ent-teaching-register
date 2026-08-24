@@ -269,9 +269,23 @@ async function loadAttendees() {
   try {
     const res = await ENT.api('session-status', { session_id: SESSION_ID }, authToken);
     attendees = res.attendees || [];
-    el('emailWarning').textContent = res.email_configured
-      ? ''
-      : 'Email is not configured yet (RESEND_API_KEY is unset on the Supabase project), so nothing can be emailed and certificates are not being issued.';
+    // Three states worth telling apart: not set up, set up but sending from
+    // Resend's shared test address (which reaches nobody but the account
+    // holder), and properly configured.
+    const warn = el('emailWarning');
+    if (!res.email_configured) {
+      warn.className = 'notice bad';
+      warn.textContent = 'Email is not configured yet (RESEND_API_KEY is unset on the Supabase project), so nothing can be emailed and certificates are not being issued.';
+    } else if (res.email_sandbox) {
+      warn.className = 'notice warn';
+      warn.innerHTML = '<strong>Trainees will not receive these.</strong> Resend is still sending as <code>' +
+        ENT.esc(res.email_from) + '</code>, its shared test address, which only delivers to the Resend account ' +
+        'holder. Verify a domain in Resend and set <code>CERT_FROM_EMAIL</code> to an address at it.';
+    } else {
+      warn.className = 'helper';
+      warn.textContent = 'Sending as ' + (res.email_from || '') +
+        (res.email_reply_to && res.email_reply_to.length ? ' · replies go to ' + res.email_reply_to.join(', ') : '');
+    }
     renderAttendees();
   } catch (err) {
     fail(err.message, el('actionResult'));
@@ -353,9 +367,16 @@ async function pushFeedbackLink(ids) {
   try {
     const res = await ENT.api('email-feedback-link',
       Object.assign({ session_id: SESSION_ID }, ids ? { attendee_ids: ids } : {}), authToken);
-    const failed = (res.failures || []).length;
-    note(`Feedback link emailed to ${res.sent} of ${res.considered} outstanding attendee${res.considered === 1 ? '' : 's'}.` +
-         (failed ? ` ${failed} failed to send.` : ''), failed ? 'warn' : 'info');
+    const fails = res.failures || [];
+    let msg = `Feedback link emailed to ${res.sent} of ${res.considered} outstanding attendee${res.considered === 1 ? '' : 's'}.`;
+    if (fails.length) {
+      msg += '<ul style="margin:8px 0 0 18px">' + fails.map((f) =>
+        `<li>${ENT.esc(f.name || f.email || 'someone')} — ${ENT.esc(f.why || 'send failed')}</li>`).join('') + '</ul>';
+    } else if (res.sandbox) {
+      msg += ' <strong>But the sender is still Resend’s test address, so only the Resend account holder actually receives them.</strong>';
+    }
+    el('actionResult').innerHTML =
+      `<div class="notice ${(fails.length || res.sandbox) ? 'warn' : 'info'}">${msg}</div>`;
   } catch (err) { note(err.message, 'bad'); }
   btn.disabled = false; btn.textContent = label;
 }
