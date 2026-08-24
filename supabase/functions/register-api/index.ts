@@ -92,8 +92,6 @@ async function issueCertificate(db: SupabaseClient, attendee: CertificateTarget,
       location: session.location,
       reference: attendee.id.slice(0, 8).toUpperCase(),
       logoUrl: Deno.env.get("CERT_LOGO_URL") || null,
-      signatoryName: Deno.env.get("CERT_SIGNATORY_NAME") || null,
-      signatoryRole: Deno.env.get("CERT_SIGNATORY_ROLE") || null,
     });
   } catch (err) {
     console.error("certificate build failed", err);
@@ -325,8 +323,6 @@ async function handleCertificatePreview(db: SupabaseClient, body: Record<string,
   const pdf = await buildCertificatePdf({
     name, sessionTitle: title, sessionDate: date, location,
     reference: "PREVIEW", logoUrl: Deno.env.get("CERT_LOGO_URL") || null,
-    signatoryName: Deno.env.get("CERT_SIGNATORY_NAME") || null,
-    signatoryRole: Deno.env.get("CERT_SIGNATORY_ROLE") || null,
   });
   return new Response(pdf, {
     headers: { ...CORS, "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="certificate-preview.pdf"' },
