@@ -6,14 +6,16 @@ window.ENT = (function () {
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjeWh2dWJ3Y3FxZ2h1bW55eHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzQ3NzEsImV4cCI6MjA5NzE1MDc3MX0.0aI5Efr6h5UzUY3V-eJz1vihmntIMKqG3-_QMXq4cxY';
   const FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/register-api';
 
-  // Calls the register-api Edge Function. `token` is only needed for organiser actions.
-  async function api(action, payload, token) {
+  // Calls the register-api Edge Function. Organiser actions require the caller's
+  // own Supabase Auth access token (from sb.auth.getSession()) as `accessToken` —
+  // the Edge Function checks that it belongs to a real signed-in user. Anonymous
+  // actions (check-in, submit-feedback) omit it and use the public anon key.
+  async function api(action, payload, accessToken) {
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + (accessToken || SUPABASE_ANON_KEY),
       'apikey': SUPABASE_ANON_KEY,
     };
-    if (token) headers['x-organiser-token'] = token;
     const res = await fetch(FUNCTIONS_URL, {
       method: 'POST',
       headers,

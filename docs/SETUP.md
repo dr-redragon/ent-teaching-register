@@ -8,9 +8,13 @@ publish the session, show the QR, share the feedback link, done.
 ## 1. Organiser accounts (log in to the register)
 
 The register itself — the attendance grid, excuses, long-term status, trainee
-list — is now behind a login. Trainees checking in or giving feedback never see
-this; they only ever use `checkin.html` / `feedback.html`, which don't require
-an account.
+list — is behind a login, and so is everything organiser-only on the other
+pages: publishing a session, the session console's attendee list, resending a
+certificate. All of it uses this same account; there's nothing separate to set
+up for those (no token to paste anywhere) — sign in once on a device and every
+page recognises you until you sign out. Trainees checking in or giving
+feedback never see any of this; they only ever use `checkin.html` /
+`feedback.html`, which don't require an account.
 
 There is no self-service sign-up, by design — you control exactly who can see
 the roster. To add someone:
@@ -51,7 +55,6 @@ Dashboard → **Project Settings → Edge Functions → Secrets** on the
 
 | Secret | Required? | What it does |
 |---|---|---|
-| `ORGANISER_TOKEN` | **yes** | The password that unlocks the organiser side (publishing a session, the attendee list, resending certificates). Invent a long random string. Without it, every organiser action is refused — the function fails closed. |
 | `RESEND_API_KEY` | for emails | From [resend.com](https://resend.com) → API Keys. Until it is set, nothing is emailed and certificates report `email_not_configured` rather than failing silently. |
 | `CERT_FROM_EMAIL` | no | Sender address. Defaults to `onboarding@resend.dev`. |
 | `CERT_FROM_NAME` | no | Sender name. Defaults to `ENT Regional Teaching`. |
@@ -81,8 +84,8 @@ without the logo.
 ## 3. Running a teaching day
 
 1. **Publish the session.** Register → *Check-in / QR* → pick the teaching day →
-   paste your organiser token (once per device) → set the real date and location
-   → **Publish this session**. The QR on that tab now opens the live sign-in page.
+   set the real date and location → **Publish this session**. The QR on that
+   tab now opens the live sign-in page.
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
    type their email, and sign in. Their attendance also lands in the register
    grid; **Pull sign-ins into the register** re-syncs at any point.
@@ -116,16 +119,15 @@ Supporting details:
   without a time, so answers cannot be lined up against sign-in times in a small
   cohort.
 - Browsers can read only `(id, session_id, name)` of attendees who have already
-  checked in — never an email address. Emails are returned only to a caller
-  holding the organiser token.
+  checked in — never an email address. Emails are returned only to a signed-in
+  organiser.
 - Browsers cannot read `feedback_responses` at all, and cannot call
   `record_feedback()` directly.
 - One response per person per session: a second submission is refused, so the
   gate cannot be used to stuff the results.
 
-Two honest limits: anyone holding the organiser token sees the attendee list and
-emails (it is a shared password, not per-user accounts); and free-text comments
-are only as anonymous as what people type into them.
+One honest limit: free-text comments are only as anonymous as what people type
+into them — nothing stops a trainee identifying themselves in their own words.
 
 ### The two linter warnings are deliberate
 
@@ -143,7 +145,7 @@ the report or force the raw table open.
 
 | Symptom | Cause |
 |---|---|
-| *Organiser token missing or incorrect* | `ORGANISER_TOKEN` is unset, or the token in your browser does not match. Clear it with `localStorage.removeItem('ent_organiser_token')` and re-enter. |
+| *Please sign in to do this* | Publishing a session or opening the session console needs you to be logged in — the same account as the register. If you already are and still see this, your session may have expired: sign out and back in. |
 | Feedback saves, no certificate | Check the console. `Gated` = no feedback yet; `Due` = feedback in, email not sent — usually `RESEND_API_KEY` missing or a send failure. |
 | Certificate says `skipped_not_checked_in` | They gave feedback but never signed in on the day. Deliberate: feedback is kept, no certificate. Use **Send now** to override. |
 | Emails only reach you | The Resend sandbox sender. Verify a domain (§2). |

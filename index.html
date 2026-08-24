@@ -1144,19 +1144,17 @@ function drawQR(){
    stays the organiser's source of truth; this only adds to it.
    ============================================================ */
 const FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/register-api';
-const ORG_TOKEN_KEY = 'ent_organiser_token';
 
-function organiserToken(){ try{ return localStorage.getItem(ORG_TOKEN_KEY)||''; }catch(e){ return ''; } }
-function setOrganiserToken(v){ try{ localStorage.setItem(ORG_TOKEN_KEY, v); }catch(e){} }
-
+// Organiser actions on the Edge Function are gated by whoever is signed in here
+// (the same account as the rest of the register) — their own access token goes
+// as the Authorization bearer, so there is no separate secret to paste anywhere.
 async function callApi(action, payload){
+  const {data:{session}} = await sb.auth.getSession();
   const headers = {
     'Content-Type':'application/json',
-    'Authorization':'Bearer '+SUPABASE_KEY,
+    'Authorization':'Bearer '+(session?.access_token || SUPABASE_KEY),
     'apikey':SUPABASE_KEY,
   };
-  const tok = organiserToken();
-  if(tok) headers['x-organiser-token'] = tok;
   const res = await fetch(FUNCTIONS_URL,{method:'POST',headers,body:JSON.stringify(Object.assign({action},payload||{}))});
   const data = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(data.error || ('Request failed ('+res.status+')'));
@@ -1173,22 +1171,6 @@ function renderCloudPanel(){
   if(!box) return;
   const s = findSession(activeSession);
   if(!s){ box.innerHTML = `<p class="helper">Add a teaching day first.</p>`; return; }
-
-  if(!organiserToken()){
-    box.innerHTML =
-      `<p class="helper" style="margin-top:0">Paste your organiser token once to publish sessions and manage certificates.
-        It is the <code>ORGANISER_TOKEN</code> secret on the Supabase project, and it stays in this browser.</p>
-       <div class="row-actions" style="margin-top:10px">
-         <input id="orgTokenInp" type="password" placeholder="Organiser token" style="max-width:240px" autocomplete="off">
-         <button class="btn primary sm" id="orgTokenSave">Save token</button>
-       </div>`;
-    document.getElementById('orgTokenSave').onclick=()=>{
-      const v=document.getElementById('orgTokenInp').value.trim();
-      if(!v) return toast('Paste the token first');
-      setOrganiserToken(v); renderCloudPanel(); toast('Token saved in this browser');
-    };
-    return;
-  }
 
   if(!s.cloudId){
     const guess = s.month + '-15';
@@ -1250,7 +1232,7 @@ async function publishSession(s){
     toast(res.created? 'Session published — QR is live' : 'Session linked to the existing cloud session');
   }catch(err){
     btn.disabled=false; btn.textContent='Publish this session';
-    toast(err.message.includes('token')? 'Organiser token rejected — check it in Supabase' : err.message);
+    toast(err.message.includes('sign in')? 'Your session has expired — log out and back in, then try again' : err.message);
   }
 }
 

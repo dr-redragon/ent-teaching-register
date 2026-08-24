@@ -14,7 +14,7 @@ import { emailConfigured, sendEmail } from "./email.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organiser-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -35,16 +35,17 @@ function service(): SupabaseClient {
   );
 }
 
-// Organiser-only actions are gated by a shared secret you set as ORGANISER_TOKEN.
-// Fails closed: with no token configured, no organiser action runs.
-function organiserOk(req: Request): boolean {
-  const expected = Deno.env.get("ORGANISER_TOKEN");
-  if (!expected) return false;
-  const given = req.headers.get("x-organiser-token") || "";
-  if (given.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
+// Organiser-only actions require the caller to be a real, currently-signed-in
+// Supabase Auth user — the same login that gates index.html and session.html.
+// The client sends that user's own access token as the Authorization bearer
+// (not the shared anon key), and getUser() validates it against Auth directly,
+// so there is no separate secret to distribute, paste into browsers, or rotate.
+async function organiserOk(req: Request): Promise<boolean> {
+  const auth = req.headers.get("authorization") || "";
+  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+  const { data, error } = await service().auth.getUser(token);
+  return !error && !!data?.user;
 }
 
 const cleanEmail = (v: unknown) => String(v ?? "").trim().toLowerCase();
@@ -347,8 +348,8 @@ Deno.serve(async (req) => {
   }
 
   const action = String(body.action ?? "");
-  if (ORGANISER_ACTIONS.has(action) && !organiserOk(req)) {
-    return json({ error: "Organiser token missing or incorrect" }, 401);
+  if (ORGANISER_ACTIONS.has(action) && !(await organiserOk(req))) {
+    return json({ error: "Please sign in to do this" }, 401);
   }
 
   const db = service();
