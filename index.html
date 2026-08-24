@@ -279,6 +279,7 @@
   <section class="panel" id="panel-checkin">
     <h2 class="panel-title">Session check-in</h2>
     <p class="panel-lede">Display the QR at the teaching day — trainees scan, pick their name, and they're logged instantly. Or check people in manually below.</p>
+    <div class="yr-tabs" id="checkinYearTabs"></div>
     <div class="qr-layout">
       <div class="qr-box card pad">
         <div id="qrcode"></div>
@@ -323,6 +324,7 @@
   <section class="panel" id="panel-excused">
     <h2 class="panel-title">Excused absences</h2>
     <p class="panel-lede">Declared absences (leave, on-call, sickness, study leave) are removed from the denominator, so a missed-but-excused session doesn't count against the trainee's adjusted attendance.</p>
+    <div class="yr-tabs" id="excusedYearTabs"></div>
     <div class="card pad" style="margin-bottom:20px">
       <div class="inline-form">
         <div>
@@ -991,9 +993,37 @@ function wireDashTables(){
 
 /* ---- check-in / QR ---- */
 let activeSession = null;
+let checkinYear = null;      // an academic-year label, or ALL_YEARS
+
+// Small reusable "year pill" bar for panels that scope to one academic year at a
+// time (Check-in, Excused absences) — simpler than the dashboard's version since
+// there's only ever one active tab, no per-year table blocks underneath.
+function renderScopeYearTabs(containerId, currentYear, onPick){
+  const el = document.getElementById(containerId);
+  const ys = availableAcademicYears();
+  if(!ys.length){ el.innerHTML=''; return null; }
+  let year = currentYear;
+  if(year!==ALL_YEARS && !ys.includes(year)) year = defaultDashYear();
+  const tabs = ys.map(y=>
+    `<button class="yr-tab${year===y?' on':''}" data-year="${escHtml(y)}" title="${escHtml(acYearRange(y))}">`+
+    `${escHtml(y)}<span class="cnt">${sessionsInYear(y).length}</span></button>`);
+  if(ys.length>1) tabs.push(
+    `<button class="yr-tab${year===ALL_YEARS?' on':''}" data-year="${ALL_YEARS}">All years<span class="cnt">${DB.sessions.length}</span></button>`);
+  el.innerHTML = tabs.join('');
+  el.querySelectorAll('.yr-tab').forEach(b=>b.onclick=()=>onPick(b.dataset.year));
+  return year;
+}
+
 function renderCheckin(){
-  const sess = sessionsSorted();
-  if(!activeSession && sess.length) activeSession = sess[sess.length-1].id;
+  checkinYear = renderScopeYearTabs('checkinYearTabs', checkinYear ?? defaultDashYear(), (y)=>{
+    checkinYear = y;
+    activeSession = null;   // let the new scope pick its own default below
+    renderCheckin(); drawQR();
+  });
+
+  const sess = checkinYear && checkinYear!==ALL_YEARS ? sessionsInYear(checkinYear) : sessionsSorted();
+  if((!activeSession || !sess.some(s=>s.id===activeSession)) && sess.length) activeSession = sess[sess.length-1].id;
+  if(!sess.length) activeSession = null;
   const picker = document.getElementById('sessPicker');
   const sessRadio = s=>`
     <label class="sess-radio ${s.id===activeSession?'sel':''}">
@@ -1001,11 +1031,13 @@ function renderCheckin(){
       <span><strong>${escHtml(fmtMonth(s.month))}</strong> · ${escHtml(s.title)}</span>
     </label>`;
   picker.innerHTML = sess.length
-    ? availableAcademicYears().slice().reverse().map(y=>
-        `<div class="group-head">${escHtml(y)} · ${escHtml(acYearRange(y))}</div>`+
-        sessionsInYear(y).slice().reverse().map(sessRadio).join('')
-      ).join('')
-    : `<div class="empty">Add a session first.</div>`;
+    ? (checkinYear===ALL_YEARS
+        ? availableAcademicYears().slice().reverse().map(y=>
+            `<div class="group-head">${escHtml(y)} · ${escHtml(acYearRange(y))}</div>`+
+            sessionsInYear(y).slice().reverse().map(sessRadio).join('')
+          ).join('')
+        : sess.slice().reverse().map(sessRadio).join(''))
+    : `<div class="empty">${DB.sessions.length? 'No teaching days in this academic year yet.' : 'Add a session first.'}</div>`;
   picker.querySelectorAll('input').forEach(i=>i.onchange=()=>{activeSession=i.value;renderCheckin();drawQR();});
 
   const sel = document.getElementById('ciTrainee');
@@ -1212,18 +1244,37 @@ function fillSessionSelect(el){
     sessionsInYear(y).slice().reverse().map(s=>`<option value="${s.id}">${escHtml(fmtMonth(s.month))} · ${escHtml(s.title)}</option>`).join('')+
     `</optgroup>`).join('');
 }
+let excusedYear = null;   // an academic-year label, or ALL_YEARS
+
 function renderExcused(){
+  excusedYear = renderScopeYearTabs('excusedYearTabs', excusedYear ?? defaultDashYear(), (y)=>{
+    excusedYear = y; renderExcused();
+  });
+
   fillTraineeSelect(document.getElementById('exTrainee'));
-  fillSessionSelect(document.getElementById('exSession'));
+  const exSessionEl = document.getElementById('exSession');
+  if(excusedYear && excusedYear!==ALL_YEARS){
+    exSessionEl.innerHTML = sessionsInYear(excusedYear).slice().reverse()
+      .map(s=>`<option value="${s.id}">${escHtml(fmtMonth(s.month))} · ${escHtml(s.title)}</option>`).join('')
+      || `<option value="" disabled selected>No sessions in ${escHtml(excusedYear)}</option>`;
+  } else {
+    fillSessionSelect(exSessionEl);
+  }
+
   const list = document.getElementById('exList');
-  const items = DB.excused.slice().sort((a,b)=>b.ts-a.ts);
+  const items = DB.excused.slice().sort((a,b)=>b.ts-a.ts)
+    .filter(e=>{
+      if(!excusedYear || excusedYear===ALL_YEARS) return true;
+      const s=findSession(e.session);
+      return s && sessAcademicYear(s.month)===excusedYear;
+    });
   list.innerHTML = items.length? items.map(e=>{
     const t=findTrainee(e.trainee), s=findSession(e.session);
     if(!t||!s) return '';
     return `<div class="list-item">
-      <div><div class="li-main">${t.name}</div><div class="li-sub">${fmtMonth(s.month)} · ${s.title} — ${e.reason}</div></div>
+      <div><div class="li-main">${escHtml(t.name)}</div><div class="li-sub">${escHtml(fmtMonth(s.month))} · ${escHtml(s.title)} — ${escHtml(e.reason)}</div></div>
       <span class="kebab" data-del="${e.id}">Remove</span></div>`;
-  }).join('') : `<div class="empty">No excused absences logged. Declared leave or on-call commitments added here are removed from the denominator.</div>`;
+  }).join('') : `<div class="empty">${DB.excused.length? 'No excused absences in this academic year.' : 'No excused absences logged. Declared leave or on-call commitments added here are removed from the denominator.'}</div>`;
   list.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{DB.excused=DB.excused.filter(x=>x.id!==b.dataset.del);await saveDB();renderAll();toast('Excuse removed');});
 }
 
