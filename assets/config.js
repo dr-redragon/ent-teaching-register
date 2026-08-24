@@ -26,6 +26,26 @@ window.ENT = (function () {
     return data;
   }
 
+  // Calls a Postgres RPC function through PostgREST (POST /rest/v1/rpc/<name>).
+  // Used for the two narrow, anon-safe functions that stand in for direct
+  // register_store access, which now requires an organiser login.
+  async function rpc(name, args) {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(args || {}),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || 'Request failed (' + res.status + ')');
+    }
+    return await res.json();
+  }
+
   // Plain PostgREST read for the anon-readable tables and views.
   async function rest(path) {
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
@@ -58,5 +78,5 @@ window.ENT = (function () {
     { key: 'recommend',    text: 'I would recommend this session to a colleague' },
   ];
 
-  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, esc, fmtDate, GRADES, QUESTIONS };
+  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, rpc, esc, fmtDate, GRADES, QUESTIONS };
 })();

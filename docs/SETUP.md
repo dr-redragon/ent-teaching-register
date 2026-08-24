@@ -5,7 +5,46 @@ publish the session, show the QR, share the feedback link, done.
 
 ---
 
-## 1. Supabase secrets
+## 1. Organiser accounts (log in to the register)
+
+The register itself — the attendance grid, excuses, long-term status, trainee
+list — is now behind a login. Trainees checking in or giving feedback never see
+this; they only ever use `checkin.html` / `feedback.html`, which don't require
+an account.
+
+There is no self-service sign-up, by design — you control exactly who can see
+the roster. To add someone:
+
+1. Supabase dashboard → **Authentication → Users → Add user**.
+2. Enter their email and a password (or send an invite, if you'd rather they
+   set their own). Tick **Auto Confirm User** so they can sign in immediately.
+3. Give them the URL and that email/password. They sign in from the page
+   itself — there's nothing else to configure per person.
+
+Remove access the same way: delete the user from that same list. There's no
+separate "roles" concept — anyone with an account sees and can change
+everything in the register, same as before this existed, just no longer
+open to the world.
+
+### Why this matters, precisely
+
+Before this, `register_store` (the table holding the entire register — every
+trainee, every excuse, every status) granted `select`/`insert`/`update` to
+`anon`, i.e. anyone holding the public API key, which is visible in this page's
+own source. That was fine while the only thing pointed at this project was the
+organiser's own browser; it stopped being fine the moment a QR code put that
+same origin in front of strangers. It's now restricted to the `authenticated`
+role — signing in is what grants it, not knowing the URL.
+
+Trainee-facing pages don't lose anything: a QR sign-in and the kiosk fallback
+(the register's own `?form=` link for a session you haven't published yet) both
+go through two narrow functions — `public_roster()` (just trainee and session
+names, nothing else) and `record_local_checkin()` (writes one attendance entry,
+nothing else) — rather than the register itself.
+
+---
+
+## 2. Supabase secrets
 
 Dashboard → **Project Settings → Edge Functions → Secrets** on the
 `ent-teaching-register` project. Add these:
@@ -16,10 +55,8 @@ Dashboard → **Project Settings → Edge Functions → Secrets** on the
 | `RESEND_API_KEY` | for emails | From [resend.com](https://resend.com) → API Keys. Until it is set, nothing is emailed and certificates report `email_not_configured` rather than failing silently. |
 | `CERT_FROM_EMAIL` | no | Sender address. Defaults to `onboarding@resend.dev`. |
 | `CERT_FROM_NAME` | no | Sender name. Defaults to `ENT Regional Teaching`. |
-| `CERT_LOGO_URL` | no | Direct URL to your logo, **PNG or JPEG** (an SVG must be converted first). |
-| `CERT_SIGNATORY_NAME` | no | Adds a signature block to the certificate, e.g. `Mr M Abdelaziz`. |
-| `CERT_SIGNATORY_ROLE` | no | The line under it, e.g. `Training Programme Director, ENT North West`. |
-| `APP_BASE_URL` | no | Where the pages are published. Defaults to `https://dr-redragon.github.io/ent-teaching-register`. The feedback link inside emails is built from this, so set it if you move the site. |
+| `CERT_LOGO_URL` | no | Overrides the logo on the certificate. By default it's fetched from `APP_BASE_URL` + `/assets/logo.png` — the copy already in this repo — so you don't need to set this unless you want a different image. **PNG or JPEG** (an SVG must be converted first). |
+| `APP_BASE_URL` | no | Where the pages are published. Defaults to `https://dr-redragon.github.io/ent-teaching-register`. The feedback link inside emails, and the default logo above, are both built from this — set it if you move the site. |
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform —
 you do not add those.
@@ -33,15 +70,15 @@ trainees, verify a domain in Resend (a few DNS records), then set
 
 ### Your logo
 
-Put `logo.png` in the repo (an `assets/` folder is the obvious home), push, and
-set `CERT_LOGO_URL` to
-`https://dr-redragon.github.io/ent-teaching-register/assets/logo.png`.
-It is scaled to fit 150 × 66 pt at the top of the certificate. If the URL ever
-breaks, certificates still go out — just without the logo.
+`assets/logo.png` is the real North West ENT Regional Trainees Society badge,
+already in the repo, and is what certificates use by default — nothing to
+configure. To swap it for a different version later, replace that file and
+push; if the fetch ever fails for any reason, certificates still go out, just
+without the logo.
 
 ---
 
-## 2. Running a teaching day
+## 3. Running a teaching day
 
 1. **Publish the session.** Register → *Check-in / QR* → pick the teaching day →
    paste your organiser token (once per device) → set the real date and location
@@ -62,7 +99,7 @@ breaks, certificates still go out — just without the logo.
 
 ---
 
-## 3. What is anonymous, precisely
+## 4. What is anonymous, precisely
 
 `feedback_responses` has six columns: `id`, `session_id`, `overall_rating`,
 `answers`, `comments`, `submitted_at`. No name, no email, no attendee id, and
@@ -102,14 +139,16 @@ the report or force the raw table open.
 
 ---
 
-## 4. If something goes wrong
+## 5. If something goes wrong
 
 | Symptom | Cause |
 |---|---|
 | *Organiser token missing or incorrect* | `ORGANISER_TOKEN` is unset, or the token in your browser does not match. Clear it with `localStorage.removeItem('ent_organiser_token')` and re-enter. |
 | Feedback saves, no certificate | Check the console. `Gated` = no feedback yet; `Due` = feedback in, email not sent — usually `RESEND_API_KEY` missing or a send failure. |
 | Certificate says `skipped_not_checked_in` | They gave feedback but never signed in on the day. Deliberate: feedback is kept, no certificate. Use **Send now** to override. |
-| Emails only reach you | The Resend sandbox sender. Verify a domain (§1). |
+| Emails only reach you | The Resend sandbox sender. Verify a domain (§2). |
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
+| Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — there's no self-service reset page here, so reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
+| Trainee sign-in / feedback page asks for a password | It shouldn't — those never touch login. If it does, you're looking at `index.html` itself rather than `checkin.html` / `feedback.html`; check the link or QR code being used. |
 
 Function logs: Supabase dashboard → Edge Functions → `register-api` → Logs.
