@@ -6,6 +6,7 @@
 <title>Session console — ENT Regional Teaching</title>
 <link rel="stylesheet" href="assets/pages.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   main{max-width:1080px}
   .qr-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
@@ -49,24 +50,31 @@
     <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
     <span class="mark">The Register</span>
     <span class="sub">Session console</span>
+    <span style="flex:1"></span>
+    <button class="btn ghost sm" id="logoutBtn" style="display:none">Log out</button>
   </div>
 </header>
 
 <main>
   <div id="loading" class="lede">Loading the session…</div>
 
-  <!-- unlock -->
-  <div class="card no-print" id="unlock" style="display:none;max-width:520px">
-    <h1>Organiser access</h1>
-    <p class="lede">The attendee list and the certificate controls are behind your organiser token
-      (the <code>ORGANISER_TOKEN</code> secret set on the Supabase project).</p>
+  <!-- login -->
+  <div class="card no-print" id="unlock" style="display:none;max-width:420px">
+    <h1>Sign in</h1>
+    <p class="lede">The attendee list and certificate controls are for organisers only — the same account
+      you use for the register itself.</p>
     <div id="unlockError"></div>
     <div class="field">
-      <label class="fld" for="token">Organiser token</label>
-      <input id="token" type="password" autocomplete="off" placeholder="paste your token">
+      <label class="fld" for="loginEmail">Email</label>
+      <input id="loginEmail" type="email" autocomplete="username">
     </div>
-    <button class="btn primary" id="unlockBtn">Unlock</button>
-    <p class="helper">Stored in this browser only, so you only paste it once per device.</p>
+    <div class="field">
+      <label class="fld" for="loginPassword">Password</label>
+      <input id="loginPassword" type="password" autocomplete="current-password">
+    </div>
+    <button class="btn primary block" id="unlockBtn">Sign in</button>
+    <p class="helper">No account? Ask whoever administers this register to add you under Supabase →
+      Authentication → Users.</p>
   </div>
 
   <div id="console" style="display:none">
@@ -133,12 +141,12 @@
 <script>
 /* Organiser console for one session: the links to hand out, who has signed in,
    who still owes feedback, who has a certificate — and the anonymous report. */
+const sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
 const params = new URLSearchParams(location.search);
 const SESSION_ID = params.get('s') || '';
-const TOKEN_KEY = 'ent_organiser_token';
 const el = (id) => document.getElementById(id);
 
-let session = null, attendees = [], responses = [], stats = null, token = '';
+let session = null, attendees = [], responses = [], stats = null, authToken = '';
 
 const baseUrl = () => location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
 const checkinUrl = () => baseUrl() + 'checkin.html?s=' + encodeURIComponent(SESSION_ID);
@@ -151,6 +159,9 @@ function note(msg, kind) {
   el('actionResult').innerHTML = `<div class="notice ${kind || 'info'}">${ENT.esc(msg)}</div>`;
 }
 
+// Organiser access here is the same Supabase Auth account as the rest of the
+// register — no separate token to paste per browser. Signing in on one device
+// signs in on that device only, same as any normal login.
 async function boot() {
   if (!SESSION_ID) return fail('No session in the link. Open this page from the register.');
   let rows;
@@ -160,22 +171,38 @@ async function boot() {
   session = rows && rows[0];
   if (!session) return fail('That session no longer exists.');
 
-  token = localStorage.getItem(TOKEN_KEY) || '';
   el('loading').style.display = 'none';
-  if (token) { await open(); } else { el('unlock').style.display = 'block'; }
+
+  const { data: { session: authSession } } = await sb.auth.getSession();
+  if (authSession) { authToken = authSession.access_token; await open(); }
+  else { el('unlock').style.display = 'block'; }
 
   el('unlockBtn').onclick = async () => {
-    token = el('token').value.trim();
-    if (!token) return;
-    try {
-      await ENT.api('session-status', { session_id: SESSION_ID }, token);
-      localStorage.setItem(TOKEN_KEY, token);
-      el('unlock').style.display = 'none';
-      await open();
-    } catch (err) {
-      el('unlockError').innerHTML = `<div class="notice bad">${ENT.esc(err.message)}</div>`;
+    const email = el('loginEmail').value.trim();
+    const password = el('loginPassword').value;
+    if (!email || !password) {
+      el('unlockError').innerHTML = `<div class="notice bad">Enter your email and password</div>`;
+      return;
     }
+    const btn = el('unlockBtn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Sign in';
+    if (error) {
+      el('unlockError').innerHTML = `<div class="notice bad">${ENT.esc(error.message === 'Invalid login credentials' ? 'Incorrect email or password.' : error.message)}</div>`;
+      return;
+    }
+    authToken = data.session.access_token;
+    el('unlock').style.display = 'none';
+    el('logoutBtn').style.display = 'inline-block';
+    await open();
   };
+
+  el('logoutBtn').onclick = async () => {
+    await sb.auth.signOut();
+    location.reload();
+  };
+  if (authSession) el('logoutBtn').style.display = 'inline-block';
 }
 
 async function open() {
@@ -222,7 +249,7 @@ async function loadAll() {
 
 async function loadAttendees() {
   try {
-    const res = await ENT.api('session-status', { session_id: SESSION_ID }, token);
+    const res = await ENT.api('session-status', { session_id: SESSION_ID }, authToken);
     attendees = res.attendees || [];
     el('emailWarning').textContent = res.email_configured
       ? ''
@@ -275,7 +302,7 @@ function renderAttendees() {
           !confirm(`${person.name} has not given feedback yet. Send their certificate anyway?`)) return;
       b.disabled = true; b.textContent = 'Sending…';
       try {
-        const res = await ENT.api('send-certificate', { attendee_id: id, force: true }, token);
+        const res = await ENT.api('send-certificate', { attendee_id: id, force: true }, authToken);
         note(certificateMessage(person.name, res.certificate), res.certificate === 'sent' ? 'info' : 'warn');
       } catch (err) { note(err.message, 'bad'); }
       await loadAttendees();
@@ -307,7 +334,7 @@ async function pushFeedbackLink(ids) {
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const res = await ENT.api('email-feedback-link',
-      Object.assign({ session_id: SESSION_ID }, ids ? { attendee_ids: ids } : {}), token);
+      Object.assign({ session_id: SESSION_ID }, ids ? { attendee_ids: ids } : {}), authToken);
     const failed = (res.failures || []).length;
     note(`Feedback link emailed to ${res.sent} of ${res.considered} outstanding attendee${res.considered === 1 ? '' : 's'}.` +
          (failed ? ` ${failed} failed to send.` : ''), failed ? 'warn' : 'info');
@@ -319,7 +346,7 @@ async function previewCertificate() {
   const btn = el('previewCert');
   btn.disabled = true;
   try {
-    const res = await ENT.api('certificate-preview', { session_id: SESSION_ID, name: 'Dr Example Trainee' }, token);
+    const res = await ENT.api('certificate-preview', { session_id: SESSION_ID, name: 'Dr Example Trainee' }, authToken);
     if (res.blob) window.open(URL.createObjectURL(res.blob), '_blank');
   } catch (err) { note(err.message, 'bad'); }
   btn.disabled = false;
