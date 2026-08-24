@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
 <title>Session feedback — ENT Regional Teaching</title>
 <link rel="stylesheet" href="assets/pages.css">
 <style>
@@ -25,7 +27,7 @@
 
 <header class="masthead">
   <div class="masthead-inner">
-    <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
+    <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
     <span class="mark">The Register</span>
     <span class="sub">ENT Regional Teaching</span>
   </div>
@@ -116,20 +118,21 @@ function scaleField(key, text, required, ends) {
 async function boot() {
   if (!SESSION_ID) return fail('This feedback link is missing its session. Please use the link or QR code for your session.');
 
-  let rows;
+  // Session and attendee list are fetched together rather than one after the
+  // other -- it halves the wait before the form appears.
+  // Only checked-in attendees are readable, and only their id and name.
+  let rows, attendees = [];
   try {
-    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location');
+    const [r, a] = await Promise.all([
+      ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location'),
+      ENT.rest('attendees?session_id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,name&order=name').catch(() => []),
+    ]);
+    rows = r; attendees = a || [];
   } catch (e) {
     return fail('Could not reach the register. Check your connection and try again.');
   }
   session = rows && rows[0];
   if (!session) return fail('This feedback link is not valid any more.');
-
-  // Only checked-in attendees are readable, and only their id and name.
-  let attendees = [];
-  try {
-    attendees = await ENT.rest('attendees?session_id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,name&order=name');
-  } catch (e) { attendees = []; }
 
   el('sessionLine').innerHTML =
     `<span class="session-line">${ENT.esc(session.title)}</span><br>` +
