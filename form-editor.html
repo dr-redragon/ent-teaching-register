@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
+<title>Feedback form editor — ENT Regional Teaching</title>
+<link rel="stylesheet" href="assets/pages.css">
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  main{max-width:1180px}
+  .backbar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+  .brand-link{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:8px}
+  .brand-link:hover .mark{color:#fff}
+  .brand-link:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+
+  .editor{display:grid;grid-template-columns:1fr 420px;gap:20px;align-items:start}
+  @media(max-width:980px){.editor{grid-template-columns:1fr}}
+
+  .scope{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .scope-pill{appearance:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;padding:7px 13px;
+    border-radius:99px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+  .scope-pill.on{background:var(--moss);border-color:var(--moss);color:#fff}
+
+  /* ---- question cards ---- */
+  .q-card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:14px 15px;margin-bottom:12px;
+    transition:border-color .12s,box-shadow .12s}
+  .q-card:focus-within{border-color:var(--moss);box-shadow:0 0 0 3px rgba(63,107,79,.11)}
+  .q-top{display:flex;gap:10px;align-items:flex-start}
+  .q-top .num{font-size:12px;font-weight:700;color:var(--muted);padding-top:12px;min-width:20px}
+  .q-top .grow{flex:1;min-width:0}
+  .q-text{font-weight:600}
+  .q-meta{display:grid;grid-template-columns:170px 1fr;gap:9px;margin-top:9px}
+  @media(max-width:620px){.q-meta{grid-template-columns:1fr}}
+  .q-ends{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+  .q-opts{margin-top:9px}
+  .q-opt{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .q-opt input{flex:1}
+  .q-foot{display:flex;gap:12px;align-items:center;margin-top:11px;padding-top:10px;border-top:1px solid #ece8db;
+    flex-wrap:wrap}
+  .q-foot .spacer{flex:1}
+  .iconbtn{appearance:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;border-radius:8px;
+    padding:6px 10px;border:1px solid var(--line);background:#fff;color:var(--muted)}
+  .iconbtn:hover:not(:disabled){border-color:var(--moss);color:var(--moss-deep)}
+  .iconbtn:disabled{opacity:.35;cursor:not-allowed}
+  .iconbtn.danger:hover{border-color:#c0613a;color:#c0613a}
+  .switch{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600;cursor:pointer}
+  .switch input{width:auto}
+  .locked-note{font-size:12px;color:var(--muted);font-style:italic}
+
+  /* ---- preview ---- */
+  .preview-wrap{position:sticky;top:18px}
+  .preview{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:18px;
+    max-height:calc(100vh - 200px);overflow-y:auto}
+  .preview h3{font-family:Georgia,serif;font-size:19px;margin-bottom:14px}
+  .pq{margin-bottom:18px}
+  .pq .t{font-weight:600;font-size:14px;margin-bottom:7px}
+  .pq .req{color:#c0613a}
+  .pscale{display:flex;gap:5px}
+  .pscale span{flex:1;text-align:center;padding:9px 2px;border:1px solid var(--line);border-radius:8px;
+    background:#fff;font-weight:600;font-size:13px}
+  .pends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:4px}
+  .pq .pchoice{display:flex;gap:8px;align-items:center;font-size:13.5px;margin-bottom:5px}
+  .pq .pchoice .box{width:15px;height:15px;border:1.5px solid var(--line);background:#fff;flex-shrink:0}
+  .pq .pchoice .box.round{border-radius:50%}
+  .pfake{border:1px solid var(--line);border-radius:9px;background:#fff;padding:10px 12px;color:#b7b2a4;font-size:13.5px}
+  .pfake.tall{min-height:70px}
+
+  .toolbar{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+  .addrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .savebar{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);
+    margin:18px -1px -1px;padding:14px 0 4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .savebar .spacer{flex:1}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand-link" href="index.html" title="Back to the register home">
+      <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="masthead-logo" width="38" height="38">
+      <span class="mark">The Register</span>
+    </a>
+    <span class="sub">Feedback form editor</span>
+  </div>
+</header>
+
+<main>
+  <nav class="backbar" aria-label="Back">
+    <a class="btn ghost sm" href="index.html#checkin">&larr; Back to Check-in / QR</a>
+    <span id="scopeLabel" class="helper" style="margin:0"></span>
+  </nav>
+
+  <div id="loading" class="lede">Loading the form…</div>
+
+  <!-- login -->
+  <div class="card narrow" id="unlock" style="display:none">
+    <h1>Sign in</h1>
+    <p class="lede">Editing the feedback form is for organisers — the same account you use for the register.</p>
+    <div id="unlockError"></div>
+    <div class="field">
+      <label class="fld" for="loginEmail">Email</label>
+      <input id="loginEmail" type="email" autocomplete="username">
+    </div>
+    <div class="field">
+      <label class="fld" for="loginPassword">Password</label>
+      <input id="loginPassword" type="password" autocomplete="current-password">
+    </div>
+    <button class="btn primary block" id="unlockBtn">Sign in</button>
+  </div>
+
+  <div id="editor" style="display:none">
+    <div class="editor">
+      <div class="card">
+        <div class="scope" id="scopePills"></div>
+        <p class="helper" id="scopeHelp" style="margin-top:0"></p>
+
+        <div class="field" style="margin-top:16px">
+          <label class="fld" for="formTitle">Form heading</label>
+          <input id="formTitle" maxlength="120">
+        </div>
+
+        <div id="questions"></div>
+
+        <div class="addrow">
+          <button class="iconbtn" data-add="scale">+ Rating 1–5</button>
+          <button class="iconbtn" data-add="choice">+ Multiple choice</button>
+          <button class="iconbtn" data-add="checkbox">+ Checkboxes</button>
+          <button class="iconbtn" data-add="short">+ Short answer</button>
+          <button class="iconbtn" data-add="long">+ Long answer</button>
+        </div>
+
+        <div id="saveResult"></div>
+
+        <div class="savebar">
+          <button class="btn primary" id="save">Save</button>
+          <button class="btn ghost sm" id="saveTemplate">Save as the template too</button>
+          <span class="spacer"></span>
+          <button class="btn ghost sm" id="reset" style="display:none">Reset to the template</button>
+        </div>
+      </div>
+
+      <div class="preview-wrap">
+        <div class="card">
+          <h2>What trainees will see</h2>
+          <p class="lede" style="margin-bottom:14px">Live preview. The name field and the anonymity notice are added
+            automatically on the real form.</p>
+          <div class="preview" id="preview"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="assets/config.js"></script>
+<script>
+/* Feedback form editor. Two scopes: this session's own form, or the shared
+   template that new sessions start from. Every save goes through the
+   organiser-gated Edge Function -- browsers cannot write either one directly. */
+let sb = null;
+const params = new URLSearchParams(location.search);
+const SESSION_ID = params.get('s') || '';
+const el = (id) => document.getElementById(id);
+
+let authToken = '';
+let form = null;              // the form being edited
+let templateForm = null;      // what the shared template currently holds
+let scope = SESSION_ID ? 'session' : 'template';
+let sessionMeta = null;
+let inherited = false;        // true when this session has no form of its own yet
+
+const TYPE_LABEL = { scale:'Rating 1–5', choice:'Multiple choice', checkbox:'Checkboxes', short:'Short answer', long:'Long answer' };
+
+function note(msg, kind) {
+  el('saveResult').innerHTML = `<div class="notice ${kind || 'info'}" style="margin-top:14px">${msg}</div>`;
+}
+function fail(msg) { el('loading').innerHTML = `<div class="notice bad">${ENT.esc(msg)}</div>`; }
+
+/* ---------------------------------------------------------------- boot */
+async function boot() {
+  sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
+  const { data: { session } } = await sb.auth.getSession();
+  el('loading').style.display = 'none';
+  if (session) { authToken = session.access_token; await load(); }
+  else { el('unlock').style.display = 'block'; }
+
+  el('unlockBtn').onclick = async () => {
+    const email = el('loginEmail').value.trim(), password = el('loginPassword').value;
+    if (!email || !password) { el('unlockError').innerHTML = '<div class="notice bad">Enter your email and password</div>'; return; }
+    const btn = el('unlockBtn'); btn.disabled = true; btn.textContent = 'Signing in…';
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Sign in';
+    if (error) {
+      el('unlockError').innerHTML = `<div class="notice bad">${ENT.esc(error.message === 'Invalid login credentials' ? 'Incorrect email or password.' : error.message)}</div>`;
+      return;
+    }
+    authToken = data.session.access_token;
+    el('unlock').style.display = 'none';
+    await load();
+  };
+}
+
+async function load() {
+  try {
+    const res = await ENT.api('get-form', SESSION_ID ? { session_id: SESSION_ID } : {}, authToken);
+    templateForm = res.template || { title: 'Session feedback', questions: [] };
+    sessionMeta = res.session || null;
+    inherited = res.source === 'template' && !!SESSION_ID;
+    form = deepCopy(scope === 'template' ? templateForm : res.form);
+    el('editor').style.display = 'block';
+    renderScope(); renderAll();
+  } catch (err) { fail(err.message); }
+}
+
+const deepCopy = (v) => JSON.parse(JSON.stringify(v || { title: 'Session feedback', questions: [] }));
+
+/* ---------------------------------------------------------------- scope */
+function renderScope() {
+  const pills = [];
+  if (SESSION_ID) pills.push(`<button class="scope-pill ${scope === 'session' ? 'on' : ''}" data-scope="session">This session</button>`);
+  pills.push(`<button class="scope-pill ${scope === 'template' ? 'on' : ''}" data-scope="template">Template for new sessions</button>`);
+  el('scopePills').innerHTML = pills.join('');
+  el('scopePills').querySelectorAll('.scope-pill').forEach((b) => b.onclick = () => switchScope(b.dataset.scope));
+
+  el('scopeLabel').textContent = sessionMeta
+    ? sessionMeta.title + ' · ' + ENT.fmtDate(sessionMeta.session_date) : '';
+
+  el('scopeHelp').innerHTML = scope === 'template'
+    ? 'Editing the <strong>template</strong>. Every session published from now on starts from this. Sessions that already have their own form are not changed.'
+    : (inherited
+      ? 'This session has no form of its own yet, so it is showing the template. Saving gives it its own copy — later template edits will not touch it.'
+      : 'Editing <strong>this session only</strong>. The template and every other session are unaffected.');
+
+  el('reset').style.display = (scope === 'session' && !inherited) ? 'inline-block' : 'none';
+  el('saveTemplate').style.display = scope === 'session' ? 'inline-block' : 'none';
+}
+
+async function switchScope(next) {
+  if (next === scope) return;
+  scope = next;
+  el('saveResult').innerHTML = '';
+  if (scope === 'template') form = deepCopy(templateForm);
+  else await load();
+  renderScope(); renderAll();
+}
+
+/* ---------------------------------------------------------------- editing */
+function slug(text, taken) {
+  let base = String(text || 'question').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'question';
+  let id = base, n = 2;
+  while (taken.has(id)) id = base + '_' + (n++);
+  return id;
+}
+
+function addQuestion(type) {
+  const taken = new Set(form.questions.map((q) => q.id));
+  const q = { id: slug('question ' + (form.questions.length + 1), taken), type, text: '', required: false };
+  if (type === 'scale') { q.lowLabel = 'Strongly disagree'; q.highLabel = 'Strongly agree'; }
+  if (type === 'choice' || type === 'checkbox') q.options = ['Option 1', 'Option 2'];
+  // A locked question (the overall rating, the free-text box) stays at its end
+  // of the form; new ones land just before the trailing locked ones.
+  let at = form.questions.length;
+  while (at > 0 && form.questions[at - 1].locked) at--;
+  form.questions.splice(at, 0, q);
+  renderAll();
+  setTimeout(() => {
+    const card = document.querySelectorAll('.q-card')[at];
+    if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.querySelector('.q-text').focus(); }
+  }, 30);
+}
+
+function move(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= form.questions.length) return;
+  const [q] = form.questions.splice(i, 1);
+  form.questions.splice(j, 0, q);
+  renderAll();
+}
+
+function duplicate(i) {
+  const taken = new Set(form.questions.map((q) => q.id));
+  const copy = deepCopy(form.questions[i]);
+  delete copy.locked;                       // a copy of a built-in is an ordinary question
+  copy.id = slug(copy.text || 'question', taken);
+  form.questions.splice(i + 1, 0, copy);
+  renderAll();
+}
+
+function remove(i) {
+  const q = form.questions[i];
+  if (!confirm(`Delete “${q.text || 'this question'}”?\n\nAnswers already given to it stay in the database, but the report will stop showing it.`)) return;
+  form.questions.splice(i, 1);
+  renderAll();
+}
+
+function questionHtml(q, i) {
+  const last = i === form.questions.length - 1;
+  const opts = (q.options || []).map((o, oi) =>
+    `<div class="q-opt"><span style="color:var(--muted);font-size:13px">${q.type === 'choice' ? '○' : '☐'}</span>` +
+    `<input data-opt="${oi}" value="${ENT.esc(o)}" maxlength="120" placeholder="Option ${oi + 1}">` +
+    `<button class="iconbtn danger" data-act="rmopt" data-opt="${oi}" title="Remove option" ${(q.options || []).length <= 2 ? 'disabled' : ''}>×</button></div>`).join('');
+
+  return `<div class="q-card" data-i="${i}">
+    <div class="q-top">
+      <div class="num">${i + 1}</div>
+      <div class="grow">
+        <input class="q-text" data-f="text" value="${ENT.esc(q.text)}" maxlength="300" placeholder="Ask something…">
+        <div class="q-meta">
+          <select data-f="type" ${q.locked ? 'disabled' : ''}>
+            ${Object.entries(TYPE_LABEL).map(([v, l]) => `<option value="${v}" ${q.type === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+          ${(q.type === 'short' || q.type === 'long')
+            ? `<input data-f="placeholder" value="${ENT.esc(q.placeholder || '')}" maxlength="120" placeholder="Hint text (optional)">`
+            : '<span></span>'}
+        </div>
+        ${q.type === 'scale' ? `<div class="q-ends">
+          <input data-f="lowLabel" value="${ENT.esc(q.lowLabel || '')}" maxlength="40" placeholder="Label for 1">
+          <input data-f="highLabel" value="${ENT.esc(q.highLabel || '')}" maxlength="40" placeholder="Label for 5">
+        </div>` : ''}
+        ${(q.type === 'choice' || q.type === 'checkbox') ? `<div class="q-opts">${opts}
+          <button class="iconbtn" data-act="addopt">+ Add option</button></div>` : ''}
+        <div class="q-foot">
+          <label class="switch"><input type="checkbox" data-f="required" ${q.required ? 'checked' : ''}> Required</label>
+          ${q.locked ? '<span class="locked-note">built in — kept on every form</span>' : ''}
+          <span class="spacer"></span>
+          <button class="iconbtn" data-act="up" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button>
+          <button class="iconbtn" data-act="down" ${last ? 'disabled' : ''} title="Move down">↓</button>
+          <button class="iconbtn" data-act="dup" title="Duplicate">Duplicate</button>
+          <button class="iconbtn danger" data-act="del" ${q.locked ? 'disabled title="This one is part of every form"' : ''}>Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderAll() {
+  el('formTitle').value = form.title || '';
+  el('questions').innerHTML = form.questions.map(questionHtml).join('');
+  renderPreview();
+}
+
+// Field edits are applied in place and only repaint the preview, so typing never
+// loses focus. Anything structural (type, options, order) does a full re-render.
+el('questions').addEventListener('input', (e) => {
+  const card = e.target.closest('.q-card'); if (!card) return;
+  const q = form.questions[+card.dataset.i];
+  const f = e.target.dataset.f;
+  if (f === 'required') { q.required = e.target.checked; renderPreview(); return; }
+  if (f && f !== 'type') { q[f] = e.target.value; renderPreview(); return; }
+  if (e.target.dataset.opt !== undefined && !e.target.dataset.act) {
+    q.options[+e.target.dataset.opt] = e.target.value; renderPreview();
+  }
+});
+
+el('questions').addEventListener('change', (e) => {
+  if (e.target.dataset.f !== 'type') return;
+  const card = e.target.closest('.q-card');
+  const q = form.questions[+card.dataset.i];
+  q.type = e.target.value;
+  if (q.type === 'scale') { q.lowLabel = q.lowLabel || 'Strongly disagree'; q.highLabel = q.highLabel || 'Strongly agree'; }
+  if ((q.type === 'choice' || q.type === 'checkbox') && (!q.options || q.options.length < 2)) q.options = ['Option 1', 'Option 2'];
+  renderAll();
+});
+
+el('questions').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-act]'); if (!btn) return;
+  const card = btn.closest('.q-card'); const i = +card.dataset.i;
+  const q = form.questions[i];
+  switch (btn.dataset.act) {
+    case 'up':     return move(i, -1);
+    case 'down':   return move(i, 1);
+    case 'dup':    return duplicate(i);
+    case 'del':    return remove(i);
+    case 'addopt': q.options.push('Option ' + (q.options.length + 1)); return renderAll();
+    case 'rmopt':  q.options.splice(+btn.dataset.opt, 1); return renderAll();
+  }
+});
+
+el('formTitle').oninput = () => { form.title = el('formTitle').value; renderPreview(); };
+document.querySelectorAll('[data-add]').forEach((b) => b.onclick = () => addQuestion(b.dataset.add));
+
+/* ---------------------------------------------------------------- preview */
+function previewQuestion(q) {
+  const req = q.required ? ' <span class="req">*</span>' : ' <span style="font-weight:400;color:var(--muted)">(optional)</span>';
+  let field;
+  if (q.type === 'scale') {
+    field = '<div class="pscale">' + [1, 2, 3, 4, 5].map((n) => `<span>${n}</span>`).join('') + '</div>' +
+      `<div class="pends"><span>1 — ${ENT.esc(q.lowLabel || '')}</span><span>5 — ${ENT.esc(q.highLabel || '')}</span></div>`;
+  } else if (q.type === 'choice' || q.type === 'checkbox') {
+    field = (q.options || []).map((o) =>
+      `<div class="pchoice"><span class="box ${q.type === 'choice' ? 'round' : ''}"></span>${ENT.esc(o)}</div>`).join('');
+  } else {
+    field = `<div class="pfake ${q.type === 'long' ? 'tall' : ''}">${ENT.esc(q.placeholder || 'Their answer…')}</div>`;
+  }
+  return `<div class="pq"><div class="t">${ENT.esc(q.text || 'Untitled question')}${req}</div>${field}</div>`;
+}
+
+function renderPreview() {
+  el('preview').innerHTML =
+    `<h3>${ENT.esc(form.title || 'Session feedback')}</h3>` +
+    (form.questions.length ? form.questions.map(previewQuestion).join('')
+      : '<p class="helper">No questions yet — add one on the left.</p>');
+}
+
+/* ---------------------------------------------------------------- saving */
+function problems() {
+  const out = [];
+  if (!form.questions.length) out.push('The form needs at least one question.');
+  form.questions.forEach((q, i) => {
+    if (!String(q.text || '').trim()) out.push(`Question ${i + 1} has no text.`);
+    if ((q.type === 'choice' || q.type === 'checkbox') && (q.options || []).filter((o) => o.trim()).length < 2)
+      out.push(`Question ${i + 1} needs at least two options.`);
+  });
+  return out;
+}
+
+async function save(alsoTemplate) {
+  const bad = problems();
+  if (bad.length) return note('<ul style="margin:0 0 0 18px">' + bad.map((b) => `<li>${ENT.esc(b)}</li>`).join('') + '</ul>', 'bad');
+
+  const btn = alsoTemplate ? el('saveTemplate') : el('save');
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const payload = { form, as_template: alsoTemplate || scope === 'template' };
+    if (scope === 'session' && SESSION_ID) payload.session_id = SESSION_ID;
+    const res = await ENT.api('save-form', payload, authToken);
+    form = deepCopy(res.form);
+    if (payload.as_template) templateForm = deepCopy(res.form);
+    if (scope === 'session') inherited = false;
+    renderScope(); renderAll();
+    note(scope === 'template'
+      ? 'Template saved. New sessions will start from this.'
+      : (alsoTemplate ? 'Saved to this session <em>and</em> to the template.' : 'Saved to this session.'), 'info');
+  } catch (err) { note(ENT.esc(err.message), 'bad'); }
+  btn.disabled = false; btn.textContent = label;
+}
+
+el('save').onclick = () => save(false);
+el('saveTemplate').onclick = () => save(true);
+el('reset').onclick = async () => {
+  if (!confirm('Discard this session’s own form and go back to the shared template?')) return;
+  try {
+    const res = await ENT.api('save-form', { session_id: SESSION_ID, reset: true }, authToken);
+    form = deepCopy(res.form); inherited = true;
+    renderScope(); renderAll();
+    note('Back to the template.', 'info');
+  } catch (err) { note(ENT.esc(err.message), 'bad'); }
+};
+
+// Deferred supabase-js has run by DOMContentLoaded.
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
+</script>
+</body>
+</html>

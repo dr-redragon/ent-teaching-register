@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
 <title>ENT Teaching Register</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
     --ink:#15211c;
@@ -40,7 +41,9 @@
     border-bottom:3px solid var(--gold);
   }
   .masthead-row{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;justify-content:space-between;max-width:1180px;margin:0 auto}
-  .brand{display:flex;align-items:center;gap:12px}
+  .brand{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:8px}
+  a.brand:hover .mark{color:#fff}
+  a.brand:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
   .brand-logo{height:44px;width:44px;flex-shrink:0;display:block}
   .brand .mark{
     font-family:Georgia,"Times New Roman",serif;
@@ -123,6 +126,47 @@
   #cellTip .tip-state{display:inline-block;width:8px;height:8px;border-radius:50%}
   #cellTip .s-present{background:#8fd3a3}#cellTip .s-excused{background:#e8a878}
   #cellTip .s-absent{background:#cfcabb}#cellTip .s-na{background:#9aa093}
+  /* Touch equivalent of the hover tip: a real, dismissible popover. A hover tip
+     is unusable on a phone — the tap that shows it never produces a mouseout, so
+     it sticks — and the same tap silently flipped the attendance underneath it. */
+  #cellPop{position:fixed;z-index:210;display:none;background:var(--moss-deep);color:#f6f4ec;
+    border-radius:12px;padding:13px 15px;font-size:13px;line-height:1.45;width:min(268px,calc(100vw - 24px));
+    box-shadow:0 10px 34px rgba(21,33,28,.34)}
+  #cellPop.show{display:block}
+  #cellPop .pop-sess{font-weight:700;font-size:14px;margin-bottom:2px}
+  #cellPop .pop-month{color:#b8cbbd;font-weight:600;letter-spacing:.03em;font-size:12px}
+  #cellPop .pop-row{margin-top:8px;display:flex;align-items:center;gap:8px}
+  #cellPop .pop-state{display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  #cellPop .s-present{background:#8fd3a3}#cellPop .s-excused{background:#e8a878}
+  #cellPop .s-absent{background:#cfcabb}#cellPop .s-na{background:#9aa093}
+  #cellPop .pop-actions{display:flex;gap:8px;margin-top:13px}
+  #cellPop button{appearance:none;font:inherit;font-weight:600;font-size:13px;cursor:pointer;
+    border-radius:8px;padding:9px 12px;border:1px solid rgba(246,244,236,.35);
+    background:transparent;color:#f6f4ec;flex:1}
+  #cellPop button.go{background:#f6f4ec;color:var(--moss-deep);border-color:#f6f4ec}
+  #cellPop .pop-note{margin-top:10px;color:#b8cbbd;font-size:12px}
+  /* chase-absences composer */
+  .modal-back{display:none;position:fixed;inset:0;z-index:500;background:rgba(21,33,28,.52);
+    backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:16px}
+  .modal-back.show{display:flex}
+  .modal-card{background:var(--card);border-radius:16px;box-shadow:0 20px 60px rgba(21,33,28,.3);
+    width:100%;max-width:640px;max-height:90vh;display:flex;flex-direction:column}
+  .modal-head{padding:20px 26px;border-bottom:1px solid var(--line);display:flex;
+    justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}
+  .modal-head h3{font-family:Georgia,serif;font-size:20px;font-weight:700;letter-spacing:-.3px}
+  .modal-body{padding:20px 26px;overflow-y:auto}
+  .chase-to{display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow-y:auto;
+    border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff}
+  .chase-to .who{font-size:12.5px;background:#eef0e6;color:var(--moss-deep);border-radius:99px;
+    padding:3px 10px;font-weight:600}
+  .chase-replies{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:560px){.chase-replies{grid-template-columns:1fr}}
+  .chase-preview{border:1px solid var(--line);border-radius:10px;background:#fff;padding:16px 18px;
+    font-size:14px;line-height:1.6;max-height:230px;overflow-y:auto}
+  .chase-preview .hdr{font-size:12px;color:var(--muted);border-bottom:1px solid var(--line);
+    padding-bottom:8px;margin-bottom:12px;line-height:1.7}
+  .chase-preview p{margin:0 0 11px}
+  .miss-list{margin:12px 0 0;font-size:13px}
   /* custom month picker */
   .month-input{position:relative;display:flex;align-items:stretch}
   .month-input input{padding-right:38px}
@@ -252,11 +296,11 @@
 
 <header>
   <div class="masthead-row">
-    <div class="brand">
-      <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="brand-logo">
+    <a class="brand" href="index.html" title="Back to the register home">
+      <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="brand-logo" width="44" height="44">
       <span class="mark">The Register</span>
       <span class="sub">ENT Regional Teaching</span>
-    </div>
+    </a>
     <span class="row-actions" style="gap:12px">
       <span class="cohort-pill" id="cohortPill"></span>
       <button class="btn ghost sm" id="logoutBtn" style="display:none">Log out</button>
@@ -356,6 +400,10 @@
         <div class="card pad" style="margin-top:18px">
           <label class="fld">Live sign-in, feedback &amp; certificates</label>
           <div id="cloudBody"></div>
+        </div>
+        <div class="card pad" style="margin-top:18px">
+          <label class="fld">Unexplained absences</label>
+          <div id="chaseBody"></div>
         </div>
       </div>
     </div>
@@ -570,7 +618,49 @@
   <span id="syncStatus">Connecting to database…</span>
 </div>
 <div class="toast" id="toast"></div>
+<!-- ===== CHASE ABSENCES ===== -->
+<div class="modal-back" id="chaseModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="chaseTitle">Ask about an absence</h3>
+      <button class="btn ghost sm" onclick="hideChaseModal()">Close</button>
+    </div>
+    <div class="modal-body">
+      <div id="chaseWarn"></div>
+
+      <label class="fld">Going to <span id="chaseCount"></span> — hidden from each other (BCC)</label>
+      <div class="chase-to" id="chaseTo"></div>
+
+      <div id="chaseMissing"></div>
+
+      <div class="field" style="margin-top:16px">
+        <label class="fld">Replies go to (up to 4)</label>
+        <div class="chase-replies" id="chaseReplies"></div>
+        <p class="helper">Any address works here — a personal Gmail or an NHS mailbox is fine. These are the only addresses a trainee's reply can reach.</p>
+      </div>
+
+      <div class="field">
+        <label class="fld">Subject</label>
+        <input id="chaseSubject">
+      </div>
+      <div class="field">
+        <label class="fld">Message — edit freely before sending</label>
+        <textarea id="chaseBodyText" style="min-height:190px"></textarea>
+      </div>
+
+      <label class="fld">Preview</label>
+      <div class="chase-preview" id="chasePreview"></div>
+      <div id="chaseResult"></div>
+    </div>
+    <div style="padding:14px 26px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn ghost" onclick="hideChaseModal()">Cancel</button>
+      <button class="btn primary" id="chaseSend">Send</button>
+    </div>
+  </div>
+</div>
+
 <div id="cellTip"></div>
+<div id="cellPop" role="dialog" aria-label="Attendance for this session"></div>
 
 <script>
 /* ============================================================
@@ -582,7 +672,7 @@
 const STORE_KEY = 'ent_register_v1';
 const SUPABASE_URL = 'https://ecyhvubwcqqghumnyxuu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjeWh2dWJ3Y3FxZ2h1bW55eHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzQ3NzEsImV4cCI6MjA5NzE1MDc3MX0.0aI5Efr6h5UzUY3V-eJz1vihmntIMKqG3-_QMXq4cxY';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let sb = null;    // created at boot, once the deferred supabase-js has run
 
 /* ============================================================
    AUTH — the register (this file) is for organisers only, gated by a
@@ -896,13 +986,23 @@ function pctColor(p){
   return 'var(--bad)';
 }
 
-/* custom hover tooltip for attendance cells (delegated, attached once) */
+/* Attendance cell details.
+   Mouse: a hover tip, and a click toggles attendance straight away.
+   Touch: hovering doesn't exist, so the first tap opens a real popover showing
+   the same details WITHOUT changing anything; changing it takes a second,
+   deliberate tap on a button inside. The popover closes on an outside tap,
+   Escape, scroll or resize, so it can't get stranded on screen. */
+const STATE_CLASS={Attended:'s-present',Excused:'s-excused',Missed:'s-absent','Not eligible':'s-na'};
+
+// Which input opened this — set on pointerdown, before any click fires.
+let lastPointerTouch=false;
+addEventListener('pointerdown',e=>{ lastPointerTouch = e.pointerType==='touch'||e.pointerType==='pen'; },true);
+
 let cellTipWired=false;
 function attachCellTip(tb){
   if(cellTipWired) return;          // delegation survives re-renders
   cellTipWired=true;
   const tip=document.getElementById('cellTip');
-  const stateClass={Attended:'s-present',Excused:'s-excused',Missed:'s-absent','Not eligible':'s-na'};
   function place(e){
     const pad=14, w=tip.offsetWidth, h=tip.offsetHeight;
     let x=e.clientX+pad, y=e.clientY+pad;
@@ -911,18 +1011,92 @@ function attachCellTip(tb){
     tip.style.left=x+'px'; tip.style.top=y+'px';
   }
   tb.addEventListener('mouseover',e=>{
+    if(lastPointerTouch) return;    // a tap must never leave a tip stuck on screen
     const d=e.target.closest('.dot'); if(!d||!tb.contains(d)) return;
     const grade=d.dataset.grade?` · ${d.dataset.grade}`:'';
     tip.innerHTML=
       `<div class="tip-sess">${d.dataset.sess}</div>`+
       `<div class="tip-month">${d.dataset.month}</div>`+
-      `<div class="tip-row"><span class="tip-state ${stateClass[d.dataset.state]||''}"></span>`+
+      `<div class="tip-row"><span class="tip-state ${STATE_CLASS[d.dataset.state]||''}"></span>`+
       `${d.dataset.name} — ${d.dataset.state}${grade}</div>`;
     tip.classList.add('show'); place(e);
   });
   tb.addEventListener('mousemove',e=>{ if(tip.classList.contains('show')) place(e); });
   tb.addEventListener('mouseout',e=>{
     const d=e.target.closest('.dot'); if(d) tip.classList.remove('show');
+  });
+}
+
+/* ---- touch popover ---- */
+let popOpenFor=null;               // {t,s} of the dot the popover belongs to
+
+function closeCellPop(){
+  const pop=document.getElementById('cellPop');
+  if(!pop||!popOpenFor) return;
+  pop.classList.remove('show');
+  popOpenFor=null;
+  document.removeEventListener('pointerdown',popOutside,true);
+  removeEventListener('keydown',popKey,true);
+  removeEventListener('scroll',closeCellPop,true);
+  removeEventListener('resize',closeCellPop);
+}
+function popOutside(e){ if(!e.target.closest('#cellPop')) closeCellPop(); }
+function popKey(e){ if(e.key==='Escape') closeCellPop(); }
+
+function placeCellPop(pop,dot){
+  const r=dot.getBoundingClientRect(), gap=10;
+  const w=pop.offsetWidth, h=pop.offsetHeight;
+  let x=r.left+r.width/2-w/2;
+  x=Math.max(12,Math.min(x,innerWidth-w-12));
+  let y=r.bottom+gap;
+  if(y+h>innerHeight-12) y=Math.max(12,r.top-h-gap);
+  pop.style.left=x+'px'; pop.style.top=y+'px';
+}
+
+function openCellPop(dot){
+  const pop=document.getElementById('cellPop');
+  document.getElementById('cellTip').classList.remove('show');
+  const present = dot.dataset.state==='Attended';
+  const na = dot.classList.contains('na');
+  const excused = dot.dataset.state==='Excused';
+  const grade = dot.dataset.grade? ' · '+escHtml(dot.dataset.grade) : '';
+
+  let actions;
+  if(na){
+    actions = `<div class="pop-note">Not in the programme for this session, so it doesn’t count either way.</div>`;
+  } else {
+    actions = `<div class="pop-actions">`+
+      `<button type="button" class="go" data-act="toggle">${present?'Mark absent':'Mark attended'}</button>`+
+      `<button type="button" data-act="close">Close</button></div>`+
+      (excused?`<div class="pop-note">Excused — this session is already out of their denominator.</div>`:'');
+  }
+
+  pop.innerHTML =
+    `<div class="pop-sess">${escHtml(dot.dataset.sess)}</div>`+
+    `<div class="pop-month">${escHtml(dot.dataset.month)}</div>`+
+    `<div class="pop-row"><span class="pop-state ${STATE_CLASS[dot.dataset.state]||''}"></span>`+
+    `<span>${escHtml(dot.dataset.name)} — ${escHtml(dot.dataset.state)}${grade}</span></div>`+
+    actions;
+
+  popOpenFor={t:dot.dataset.t,s:dot.dataset.s};
+  pop.classList.add('show');
+  placeCellPop(pop,dot);
+
+  pop.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+    if(b.dataset.act==='close') return closeCellPop();
+    const k=attKey(popOpenFor.t,popOpenFor.s);
+    if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
+    closeCellPop();
+    await saveDB(); renderAll();
+  });
+
+  // added on the next frame so the tap that opened this doesn't close it
+  requestAnimationFrame(()=>{
+    if(!popOpenFor) return;
+    document.addEventListener('pointerdown',popOutside,true);
+    addEventListener('keydown',popKey,true);
+    addEventListener('scroll',closeCellPop,true);
+    addEventListener('resize',closeCellPop);
   });
 }
 
@@ -1062,7 +1236,10 @@ function wireDashTables(){
     const th=e.target.closest('th[data-sort]');
     if(th){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=1;} renderDash(); return; }
     const d=e.target.closest('.dot');
-    if(d && !d.classList.contains('na')){
+    if(!d) return;
+    // On touch, show the details first; the change needs a second, deliberate tap.
+    if(lastPointerTouch){ openCellPop(d); return; }
+    if(!d.classList.contains('na')){
       const k=attKey(d.dataset.t,d.dataset.s);
       if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
       await saveDB(); renderAll();
@@ -1130,6 +1307,7 @@ function renderCheckin(){
     : '—';
   drawQR();
   renderCloudPanel();
+  renderChasePanel();
   renderRecentCheckins();
 }
 function renderRecentCheckins(){
@@ -1140,7 +1318,21 @@ function renderRecentCheckins(){
       `<div class="pill-row">${present.map(t=>{const g=gradeAt(t.id,s.id);return `<span class="badge active">${t.name}${g?' · '+g:''}</span>`;}).join('')}</div>`
     : `<div class="helper">No check-ins yet for this session.</div>`;
 }
-function drawQR(){
+/* The QR library is ~20KB and is needed only once a teaching day is on screen,
+   so it is fetched on demand rather than blocking every page load. */
+let qrLib=null;
+function loadQrLib(){
+  if(window.QRCode) return Promise.resolve(true);
+  if(qrLib) return qrLib;
+  qrLib = new Promise(resolve=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    sc.onload=()=>resolve(true); sc.onerror=()=>resolve(false);
+    document.head.appendChild(sc);
+  });
+  return qrLib;
+}
+async function drawQR(){
   const box=document.getElementById('qrcode'); box.innerHTML='';
   if(!activeSession) return;
   const base = location.href.split('?')[0].split('#')[0];
@@ -1150,8 +1342,11 @@ function drawQR(){
   const url = s && s.cloudId
     ? base.replace(/[^\/]*$/, '') + 'checkin.html?s=' + encodeURIComponent(s.cloudId)
     : base + '?form=' + encodeURIComponent(activeSession);
-  new QRCode(box,{text:url,width:230,height:230,colorDark:'#2c4d39',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
   box.dataset.url = url;
+  if(!await loadQrLib()){ box.textContent='QR unavailable offline — use “Copy form link”'; return; }
+  if(box.dataset.url!==url) return;           // a newer render already ran
+  box.innerHTML='';
+  new QRCode(box,{text:url,width:230,height:230,colorDark:'#2c4d39',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
 }
 
 /* ============================================================
@@ -1183,6 +1378,179 @@ function pageUrl(file, cloudId){
   return base + file + '?s=' + encodeURIComponent(cloudId);
 }
 
+/* ============================================================
+   UNEXPLAINED ABSENCES — who the register shows as absent for a session
+   with no excuse recorded, and a chaser email to ask them why.
+   Eligibility, excuses and long-term status all live in the register, not in
+   Supabase, so the list is worked out here and only the addresses are sent.
+   ============================================================ */
+const CHASE_REPLIES_KEY = 'ent_chase_replies_v1';
+
+// Eligible for this session, not marked present, not excused. Former trainees
+// (CCT'd, transferred out) fall out via isEligible().
+function unexplainedAbsentees(sess){
+  if(!sess) return [];
+  return DB.trainees
+    .filter(t => isEligible(t.id, sess.month) && !isPresent(t.id, sess.id) && !isExcused(t.id, sess.month))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+function renderChasePanel(){
+  const box=document.getElementById('chaseBody');
+  if(!box) return;
+  const s=findSession(activeSession);
+  if(!s){ box.innerHTML='<p class="helper" style="margin-top:0">Add a teaching day first.</p>'; return; }
+
+  const absent=unexplainedAbsentees(s);
+  const withEmail=absent.filter(t=>(t.email||'').trim());
+  const without=absent.filter(t=>!(t.email||'').trim());
+
+  if(!absent.length){
+    box.innerHTML='<p class="helper" style="margin-top:0">Everyone eligible for <strong>'+escHtml(s.title)+
+      '</strong> is either marked present or excused — nobody to chase.</p>';
+    return;
+  }
+
+  box.innerHTML =
+    '<p class="helper" style="margin-top:0"><strong>'+absent.length+'</strong> eligible trainee'+(absent.length===1?' is':'s are')+
+    ' down as absent for <strong>'+escHtml(s.title)+'</strong> with no excuse recorded'+
+    (without.length? ', and <strong>'+without.length+'</strong> of them '+(without.length===1?'has':'have')+' no email on file':'')+'.</p>'+
+    '<div class="pill-row" style="margin:10px 0 12px">'+
+      absent.map(t=>'<span class="badge '+((t.email||'').trim()?'active':'')+'">'+escHtml(t.name)+
+        ((t.email||'').trim()?'':' · no email')+'</span>').join('')+
+    '</div>'+
+    '<div class="row-actions">'+
+      '<button class="btn primary sm" id="chaseOpen"'+(withEmail.length?'':' disabled')+'>Write the chaser email…</button>'+
+    '</div>'+
+    (withEmail.length? '' : '<p class="helper">None of them have an email on file yet — add one on the Trainees &amp; sessions tab.</p>');
+
+  const btn=document.getElementById('chaseOpen');
+  if(btn) btn.onclick=()=>showChaseModal(s);
+}
+
+/* ---- the composer ---- */
+let chaseTargets=[];             // trainees with an email, for this session
+
+function defaultChaseBody(s){
+  const when = fmtMonth(s.month);
+  return 'Hello!\n\n'+
+    'It appears the system shows you did not attend the '+s.title+' session on '+when+'. '+
+    'Please can you reply with the reason so we can update the register.\n\n'+
+    'If you were there and we have missed you, just say so and we will correct it.\n\n'+
+    'Many thanks,\nENT Regional Teaching';
+}
+
+function savedReplyAddresses(){
+  try{ const v=JSON.parse(localStorage.getItem(CHASE_REPLIES_KEY)); if(Array.isArray(v)) return v; }catch(e){}
+  return [];
+}
+
+function showChaseModal(s){
+  const absent=unexplainedAbsentees(s);
+  chaseTargets=absent.filter(t=>(t.email||'').trim());
+  const missing=absent.filter(t=>!(t.email||'').trim());
+
+  document.getElementById('chaseTitle').textContent='Ask about absences — '+s.title;
+  document.getElementById('chaseCount').textContent=
+    chaseTargets.length+' trainee'+(chaseTargets.length===1?'':'s');
+  document.getElementById('chaseTo').innerHTML=
+    chaseTargets.map(t=>'<span class="who">'+escHtml(t.name)+'</span>').join('');
+
+  // Say plainly who is being left out, and why, before anything is sent.
+  document.getElementById('chaseMissing').innerHTML = missing.length
+    ? '<div class="notice warn miss-list"><strong>'+missing.length+' will not be emailed — no address on file:</strong> '+
+      missing.map(t=>escHtml(t.name)).join(', ')+
+      '. Add their emails on the <em>Trainees &amp; sessions</em> tab and reopen this to include them.</div>'
+    : '';
+
+  const saved=savedReplyAddresses();
+  document.getElementById('chaseReplies').innerHTML=[0,1,2,3].map(i=>
+    '<input class="chase-reply" type="email" placeholder="reply address '+(i+1)+(i?' (optional)':'')+
+    '" value="'+escHtml(saved[i]||'')+'">').join('');
+
+  document.getElementById('chaseSubject').value='Attendance query — '+s.title+' ('+fmtMonth(s.month)+')';
+  document.getElementById('chaseBodyText').value=defaultChaseBody(s);
+  document.getElementById('chaseResult').innerHTML='';
+  document.getElementById('chaseWarn').innerHTML='';
+
+  const send=document.getElementById('chaseSend');
+  send.disabled=false; send.textContent='Send';
+  send.onclick=()=>sendChase(s);
+
+  ['chaseSubject','chaseBodyText'].forEach(id=>document.getElementById(id).oninput=renderChasePreview);
+  document.getElementById('chaseReplies').oninput=renderChasePreview;
+  renderChasePreview();
+
+  document.getElementById('chaseModal').classList.add('show');
+  checkChaseSender();
+}
+
+function hideChaseModal(){ document.getElementById('chaseModal').classList.remove('show'); }
+
+function chaseReplyValues(){
+  return [...document.querySelectorAll('.chase-reply')].map(i=>i.value.trim()).filter(Boolean);
+}
+
+function renderChasePreview(){
+  const subject=document.getElementById('chaseSubject').value.trim();
+  const body=document.getElementById('chaseBodyText').value;
+  const replies=chaseReplyValues();
+  document.getElementById('chasePreview').innerHTML=
+    '<div class="hdr"><strong>Subject:</strong> '+escHtml(subject||'(no subject)')+'<br>'+
+    '<strong>To:</strong> '+chaseTargets.length+' recipient'+(chaseTargets.length===1?'':'s')+', all in BCC — none of them can see the others<br>'+
+    '<strong>Reply-to:</strong> '+(replies.length? escHtml(replies.join(', ')) : '<em>none set — replies go to the sending address</em>')+'</div>'+
+    body.split(/\n{2,}/).filter(p=>p.trim()).map(pp=>'<p>'+escHtml(pp).replace(/\n/g,'<br>')+'</p>').join('');
+}
+
+// Warn about the Resend sandbox before anything is sent, not after.
+async function checkChaseSender(){
+  const s=findSession(activeSession);
+  if(!s || !s.cloudId) return;                 // no published session to ask about
+  try{
+    const res=await callApi('session-status',{session_id:s.cloudId});
+    if(res.email_sandbox){
+      document.getElementById('chaseWarn').innerHTML=
+        '<div class="notice warn"><strong>These will not reach anyone yet.</strong> Resend is still sending as <code>'+
+        escHtml(res.email_from)+'</code>, its shared test address, which only delivers to the Resend account holder. '+
+        'See docs/SETUP.md.</div>';
+    }
+  }catch(e){ /* the warning is a courtesy; never block the compose window on it */ }
+}
+
+async function sendChase(s){
+  const subject=document.getElementById('chaseSubject').value.trim();
+  const body=document.getElementById('chaseBodyText').value.trim();
+  const replies=chaseReplyValues();
+  const rEl=document.getElementById('chaseResult');
+
+  if(!subject) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">Give the email a subject.</div>';
+  if(!body) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">The message is empty.</div>';
+  const badReply=replies.find(r=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r));
+  if(badReply) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">“'+escHtml(badReply)+'” is not a valid reply address.</div>';
+  if(!chaseTargets.length) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">Nobody to send to.</div>';
+
+  try{ localStorage.setItem(CHASE_REPLIES_KEY, JSON.stringify(replies)); }catch(e){}
+
+  const btn=document.getElementById('chaseSend');
+  btn.disabled=true; btn.textContent='Sending…';
+  try{
+    const res=await callApi('chase-absences',{
+      recipients: chaseTargets.map(t=>t.email.trim()),
+      subject, body, reply_to: replies,
+    });
+    const fails=res.failures||[];
+    let msg='Sent to '+res.sent+' of '+res.considered+', all in BCC.';
+    if(fails.length) msg+=' '+fails.length+' batch'+(fails.length===1?'':'es')+' failed: '+
+      escHtml(fails.map(f=>f.why).join(' '));
+    else if(res.sandbox) msg+=' <strong>But the sender is still Resend’s test address, so only the Resend account holder actually received it.</strong>';
+    rEl.innerHTML='<div class="notice '+((fails.length||res.sandbox)?'warn':'info')+'" style="margin-top:12px">'+msg+'</div>';
+    if(!fails.length) toast('Chaser sent to '+res.sent);
+  }catch(err){
+    rEl.innerHTML='<div class="notice bad" style="margin-top:12px">'+escHtml(err.message)+'</div>';
+  }
+  btn.disabled=false; btn.textContent='Send';
+}
+
 function renderCloudPanel(){
   const box = document.getElementById('cloudBody');
   if(!box) return;
@@ -1206,7 +1574,9 @@ function renderCloudPanel(){
        </div>
        <div class="row-actions" style="margin-top:12px">
          <button class="btn primary sm" id="cloudPublish">Publish this session</button>
-       </div>`;
+         <a class="btn ghost sm" href="form-editor.html" target="_blank" rel="noopener">Edit the feedback form template</a>
+       </div>
+       <p class="helper">A published session starts from the template, then can be edited on its own.</p>`;
     document.getElementById('cloudPublish').onclick=()=>publishSession(s);
     return;
   }
@@ -1223,9 +1593,12 @@ function renderCloudPanel(){
      </div>
      <div class="row-actions" style="margin-top:12px">
        <button class="btn ghost sm" id="cloudCopyFeedback">Copy feedback link</button>
-       <button class="btn ghost sm" id="cloudSync">Pull sign-ins into the register</button>
+       <a class="btn ghost sm" href="${pageUrl('form-editor.html',s.cloudId)}" target="_blank" rel="noopener">Edit the feedback form</a>
+       <button class="btn ghost sm" id="cloudSync">Re-sync sign-ins</button>
      </div>
-     <p class="helper" id="cloudSyncMsg">The QR above now opens the live sign-in page for this session.</p>
+     <p class="helper" id="cloudSyncMsg">Sign-ins land in the attendance grid by themselves. Re-sync is the repair
+       button: use it if someone signed in while offline, if you added them to the roster after they signed in, or to
+       pull in emails and grades people typed on the day.</p>
 
      <div class="att-head">
        <label class="fld" style="margin:0">Feedback &amp; certificates</label>
@@ -1264,6 +1637,15 @@ async function loadCloudAttendees(s){
       document.getElementById('fbPushSel').disabled=true;
       return;
     }
+    // The sandbox sender reports every send as a success but only ever reaches
+    // the Resend account holder, so say so before anyone relies on it.
+    if(res.email_sandbox){
+      document.getElementById('fbResult').innerHTML =
+        '<div class="notice warn" style="margin-top:10px"><strong>Trainees will not receive these.</strong> '+
+        'Resend is still sending as <code>'+escHtml(res.email_from)+'</code>, its shared test address, which only '+
+        'delivers to the Resend account holder. Verify a domain in Resend and set <code>CERT_FROM_EMAIL</code> '+
+        'to an address at it — see docs/SETUP.md.</div>';
+    }
     if(!cloudAttendees.length){
       box.innerHTML='<div class="empty" style="padding:16px">Nobody has signed in yet.</div>';
       return;
@@ -1291,9 +1673,16 @@ async function pushCloudFeedback(s, ids){
   const label=btn.textContent; btn.disabled=true; btn.textContent='Sending...';
   try{
     const res=await callApi('email-feedback-link', Object.assign({session_id:s.cloudId}, ids?{attendee_ids:ids}:{}));
-    const failed=(res.failures||[]).length;
-    rEl.innerHTML='<div class="notice '+(failed?'warn':'info')+'" style="margin-top:10px">Feedback link emailed to '+res.sent+' of '+res.considered+' outstanding.'+
-      (failed?' '+failed+' failed to send.':'')+'</div>';
+    const fails=res.failures||[];
+    let msg='Feedback link emailed to '+res.sent+' of '+res.considered+' outstanding.';
+    if(fails.length){
+      // name who missed out and why, rather than a bare count
+      msg+='<ul style="margin:8px 0 0 18px">'+fails.map(f=>
+        '<li>'+escHtml(f.name||f.email||'someone')+' — '+escHtml(f.why||'send failed')+'</li>').join('')+'</ul>';
+    } else if(res.sandbox){
+      msg+=' <strong>But the sender is still Resend\u2019s test address, so only the Resend account holder actually receives them.</strong>';
+    }
+    rEl.innerHTML='<div class="notice '+((fails.length||res.sandbox)?'warn':'info')+'" style="margin-top:10px">'+msg+'</div>';
     await loadCloudAttendees(s);
   }catch(err){
     rEl.innerHTML='<div class="notice bad" style="margin-top:10px">'+escHtml(err.message)+'</div>';
@@ -1584,6 +1973,7 @@ function renderManage(){
 }
 
 function renderAll(){
+  closeCellPop();                    // never leave a popover pointing at a stale cell
   const yrs=availableAcademicYears();
   document.getElementById('cohortPill').textContent =
     `${DB.trainees.length} trainees · ${DB.sessions.length} teaching days` +
@@ -1601,13 +1991,25 @@ function toast(msg){
 /* ============================================================
    EVENTS
    ============================================================ */
+// Tabs are addressable as #dash / #checkin / ... so other pages (the session
+// console) can link straight back to the tab you came from.
+function showTab(name){
+  const tab=document.querySelector('.tab[data-tab="'+name+'"]');
+  const panel=document.getElementById('panel-'+name);
+  if(!tab||!panel) return false;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  tab.classList.add('active'); panel.classList.add('active');
+  return true;
+}
+function applyTabHash(){ return showTab((location.hash||'').replace(/^#/,'')); }
+
 function wire(){
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+    showTab(t.dataset.tab);
+    history.replaceState(null,'','#'+t.dataset.tab);
   });
+  addEventListener('hashchange', applyTabHash);
   document.getElementById('dashSearch').oninput=renderDash;
   document.getElementById('dashHideNA').onchange=renderDash;
   wireDashTables();
@@ -2077,9 +2479,18 @@ async function bootApp(){
   initMonthPickers();
   updateStatusHelper();
   renderAll();
+  applyTabHash();                      // honour index.html#checkin and friends
 }
 
-(async function(){
+// Deferred scripts finish before DOMContentLoaded, so supabase-js is guaranteed
+// to be there by the time this runs -- without it having blocked first paint.
+function whenReady(fn){
+  if(document.readyState==='loading') addEventListener('DOMContentLoaded',fn,{once:true});
+  else fn();
+}
+
+whenReady(async function(){
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){
     // Anonymous sign-in for an unpublished session's QR — never gated by login.
@@ -2095,7 +2506,7 @@ async function bootApp(){
   sb.auth.onAuthStateChange((event)=>{
     if(event==='SIGNED_OUT') showLogin();
   });
-})();
+});
 </script>
 </body>
 </html>

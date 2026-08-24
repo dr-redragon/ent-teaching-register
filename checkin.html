@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
 <title>Sign in — ENT Regional Teaching</title>
 <link rel="stylesheet" href="assets/pages.css">
 </head>
@@ -10,7 +12,7 @@
 
 <header class="masthead">
   <div class="masthead-inner">
-    <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
+    <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
     <span class="mark">The Register</span>
     <span class="sub">ENT Regional Teaching</span>
   </div>
@@ -45,8 +47,8 @@
 
       <div class="field">
         <label class="fld" for="email" id="emailLabel">Your email</label>
-        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="name@nhs.net">
-        <p class="helper" id="emailHelper">Your certificate is sent here once you have completed the feedback form after the session.</p>
+        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="the address you actually check">
+        <p class="helper" id="emailHelper">Work or personal — whichever you actually read. Your certificate is sent here once you have completed the feedback form after the session.</p>
       </div>
 
       <button class="btn primary block" id="submit">I'm here — sign me in</button>
@@ -100,16 +102,19 @@ async function loadRoster() {
 async function boot() {
   if (!SESSION_ID) return fail('This sign-in link is missing its session. Please scan the QR code again.');
 
+  // Both requests go out together: on hospital wifi, two round trips one after
+  // the other is most of the wait before this form appears.
   let rows;
   try {
-    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,local_id');
+    [rows, roster] = await Promise.all([
+      ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,local_id'),
+      loadRoster(),
+    ]);
   } catch (e) {
     return fail('Could not reach the register. Check your connection and try again.');
   }
   session = rows && rows[0];
   if (!session) return fail('This sign-in link is not valid any more.');
-
-  roster = await loadRoster();
 
   el('sessionLine').innerHTML =
     `<span class="session-line">${ENT.esc(session.title)}</span><br>` +
@@ -163,8 +168,8 @@ function updateEmailField() {
   const onFile = emailOnFileForSelection() && el('who').value !== '__other';
   el('emailLabel').textContent = onFile ? 'Your email (already on file)' : 'Your email';
   el('emailHelper').textContent = onFile
-    ? "We have your email on file — leave this blank unless it has changed. Your certificate goes there after you complete the feedback form."
-    : "Your certificate is sent here once you complete the feedback form after the session.";
+    ? "We have an address on file — leave this blank unless it has changed. Your certificate goes there after you complete the feedback form."
+    : "Work or personal — whichever you actually read. Your certificate is sent here once you complete the feedback form after the session.";
 }
 
 async function submit() {

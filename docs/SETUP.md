@@ -56,20 +56,60 @@ Dashboard → **Project Settings → Edge Functions → Secrets** on the
 | Secret | Required? | What it does |
 |---|---|---|
 | `RESEND_API_KEY` | for emails | From [resend.com](https://resend.com) → API Keys. Until it is set, nothing is emailed and certificates report `email_not_configured` rather than failing silently. |
-| `CERT_FROM_EMAIL` | no | Sender address. Defaults to `onboarding@resend.dev`. |
+| `CERT_FROM_EMAIL` | **to reach trainees** | Sender address. Must be at a domain you have verified in Resend — see below. Defaults to `onboarding@resend.dev`, which reaches nobody but you. |
 | `CERT_FROM_NAME` | no | Sender name. Defaults to `ENT Regional Teaching`. |
+| `CERT_REPLY_TO` | no | Where replies go — comma-separated. **This one can be a plain Gmail or NHS address**, because a reply-to is not a sender. Set it to the address you want trainees to reach you on. |
 | `CERT_LOGO_URL` | no | Overrides the logo on the certificate. By default it's fetched from `APP_BASE_URL` + `/assets/logo.png` — the copy already in this repo — so you don't need to set this unless you want a different image. **PNG or JPEG** (an SVG must be converted first). |
 | `APP_BASE_URL` | no | Where the pages are published. Defaults to `https://dr-redragon.github.io/ent-teaching-register`. The feedback link inside emails, and the default logo above, are both built from this — set it if you move the site. |
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform —
 you do not add those.
 
-### About the Resend sandbox
+### Making trainees actually receive their emails
 
-With no verified domain, Resend only delivers to **the email address on your own
-Resend account**. That is enough to test the whole flow end to end. To send to
-trainees, verify a domain in Resend (a few DNS records), then set
-`CERT_FROM_EMAIL` to an address at that domain. No code changes.
+This is the one part of the setup that cannot be done from inside this repo, so
+it is worth being precise about.
+
+**Why you can't just send from your Gmail.** No email provider will let you send
+mail claiming to be `you@gmail.com` — proving you're allowed to send as a domain
+means publishing DNS records on it, and only Google can do that for gmail.com.
+Anything that tried would be rejected outright or land in spam. This is not a
+Resend limitation; it is how email authentication works everywhere.
+
+**What Resend does out of the box.** With no domain verified, it sends as
+`onboarding@resend.dev`, its shared test address, which delivers **only to the
+email address on your own Resend account**. Every send still reports success, so
+this is exactly the failure mode that looks like it works and reaches nobody.
+Both the register's Check-in tab and the session console now say so in as many
+words whenever that sender is in use — if you don't see that warning, you're set
+up properly.
+
+**The fix, once, about fifteen minutes:**
+
+1. Get a domain if you don't have one. Any registrar; roughly £8–12/year
+   (Cloudflare Registrar and Namecheap are both fine). It doesn't need a
+   website — you're only using it to send from. Something like
+   `nwentteaching.co.uk` works.
+2. Resend → **Domains → Add Domain** → type it in.
+3. Resend shows three or four DNS records (a TXT for SPF, a TXT for DKIM,
+   usually a CNAME or two). Paste each one into your registrar's DNS panel
+   exactly as shown.
+4. Wait — usually minutes, occasionally a few hours — and press **Verify** in
+   Resend until the domain goes green.
+5. In Supabase → Edge Functions → Secrets, set `CERT_FROM_EMAIL` to an address
+   at that domain, e.g. `certificates@nwentteaching.co.uk`. The mailbox does not
+   have to exist; it's a sending identity.
+6. Optionally set `CERT_REPLY_TO` to your Gmail, so replies come back to you
+   normally.
+
+No code changes and no redeploy — secrets are read on the next call.
+
+**Volume.** Resend's free tier is 100 emails/day and 3,000/month, at 2 requests
+a second. A teaching day of thirty trainees is one feedback push plus thirty
+certificates, so a single day fits comfortably; two big days in one calendar day
+would not. The rate limit is handled for you — sends are spaced out and a
+throttled one is retried rather than being dropped, which is what used to make a
+large push quietly reach only the first few people.
 
 ### Your logo
 
@@ -85,7 +125,9 @@ without the logo.
 
 1. **Publish the session.** Register → *Check-in / QR* → pick the teaching day →
    set the real date and location → **Publish this session**. The QR on that
-   tab now opens the live sign-in page.
+   tab now opens the live sign-in page. The session starts with a copy of the
+   feedback-form template; **Edit the feedback form** changes it for this day
+   only (see below).
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
    and sign in. If we already hold their email (see below) they can leave that
    field blank; if not, they're asked to add one so their certificate can reach
@@ -104,6 +146,55 @@ without the logo.
 5. **Read the feedback** in the console's report: response rate, mean overall,
    the rating spread, a mean per question, and the comments. Print it or take
    the CSV.
+
+### Editing the feedback form
+
+The questions trainees are asked are no longer fixed. There are two things you
+can edit, and the difference matters:
+
+- **The template.** *Check-in / QR* → **Edit the feedback form template** (or
+  open `form-editor.html` directly). Every session published from now on starts
+  from this. Sessions that already exist are not touched.
+- **One session's form.** *Check-in / QR* → pick the day → **Edit the feedback
+  form**, or the same button in the session console. Changes here affect that
+  session only. **Save as the template too** does both at once, and **Reset to
+  the template** throws the session's own copy away and goes back to inheriting.
+
+The editor works like a form builder: add a question, pick its type (rating 1–5,
+multiple choice, checkboxes, short answer, long answer), reorder with ↑/↓,
+duplicate, delete, mark it required — with a live preview of what trainees will
+see beside it. Two questions are built in and cannot be deleted: the overall 1–5
+rating (it is stored in its own column and drives the report) and a free-text
+box.
+
+**Why the form is stored per session, not once globally.** Answers are keyed by
+question id, and the wording travels with the session. So rewording a question
+next year does not silently relabel last year's answers, and a question you
+delete still shows its results on the sessions that asked it.
+
+None of this touches anonymity: a form is a set of questions, not an answer.
+`feedback_responses` still holds no name, no email and no attendee id.
+
+### Chasing an unexplained absence
+
+*Check-in / QR* → pick the teaching day → **Unexplained absences**. It lists
+every trainee the register counts as eligible for that session who is neither
+marked present nor excused — so anyone CCT'd, transferred out, on maternity or
+OOP is already excluded, and so is anyone with an excuse recorded.
+
+**Write the chaser email…** opens a composer. Before you send anything it shows
+you:
+
+- exactly who it is going to, and that they are all in BCC — no trainee sees
+  another trainee's address;
+- **who is being left out because we hold no email for them**, by name, so you
+  can add those on the *Trainees & sessions* tab and reopen;
+- up to four reply-to addresses (a personal Gmail is fine here — a reply-to is
+  not a sender), remembered for next time;
+- a live preview of the subject, headers and body.
+
+The subject and body are prefilled and fully editable. Nothing is sent until you
+press **Send**.
 
 ### Trainee emails
 
@@ -142,6 +233,9 @@ Supporting details:
   organiser.
 - Browsers cannot read `feedback_responses` at all, and cannot call
   `record_feedback()` directly.
+- Browsers have `select` on `sessions` and `form_templates` and nothing else —
+  no insert, update, delete or truncate. Every write goes through the Edge
+  Function as `service_role`.
 - One response per person per session: a second submission is refused, so the
   gate cannot be used to stuff the results.
 
@@ -167,7 +261,8 @@ the report or force the raw table open.
 | *Please sign in to do this* | Publishing a session or opening the session console needs you to be logged in — the same account as the register. If you already are and still see this, your session may have expired: sign out and back in. |
 | Feedback saves, no certificate | Check the console. `Gated` = no feedback yet; `Due` = feedback in, email not sent — usually `RESEND_API_KEY` missing or a send failure. |
 | Certificate says `skipped_not_checked_in` | They gave feedback but never signed in on the day. Deliberate: feedback is kept, no certificate. Use **Send now** to override. |
-| Emails only reach you | The Resend sandbox sender. Verify a domain (§2). |
+| Emails only reach you | The Resend sandbox sender — `CERT_FROM_EMAIL` is unset or still `@resend.dev`. Verify a domain (§2). The Check-in tab and session console both flag this explicitly. |
+| A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — there's no self-service reset page here, so reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
 | Trainee sign-in / feedback page asks for a password | It shouldn't — those never touch login. If it does, you're looking at `index.html` itself rather than `checkin.html` / `feedback.html`; check the link or QR code being used. |
