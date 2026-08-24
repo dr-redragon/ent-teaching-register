@@ -87,18 +87,37 @@ without the logo.
    set the real date and location → **Publish this session**. The QR on that
    tab now opens the live sign-in page.
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
-   type their email, and sign in. Their attendance also lands in the register
-   grid; **Pull sign-ins into the register** re-syncs at any point.
-3. **At the end**, share the feedback link — the QR and *Copy feedback link* are
-   both on that panel, or use **Session console → Email feedback link to everyone
-   outstanding** to push it to the addresses people signed in with. You can also
-   tick individuals and email only those.
+   and sign in. If we already hold their email (see below) they can leave that
+   field blank; if not, they're asked to add one so their certificate can reach
+   them. Their attendance also lands in the register grid; **Pull sign-ins into
+   the register** re-syncs at any point, and also backfills any missing roster
+   emails from what people signed in with.
+3. **At the end**, push the feedback form — right there on the *Check-in / QR*
+   tab, under **Feedback & certificates**: **Email feedback to all outstanding**
+   sends it to every checked-in trainee who hasn't given feedback yet, or tick
+   individuals and use **Email selected**. (The **Session console** does the
+   same, plus the full report, if you'd rather work from there. The *Copy
+   feedback link* / QR are there too if you want to share it another way.)
 4. **Certificates issue themselves.** Submitting feedback flips the gate and the
-   certificate is emailed straight away. The console shows who is still waiting
-   and can resend.
+   certificate is emailed straight away. The attendee list shows who has given
+   feedback and whose certificate has gone; the console can resend.
 5. **Read the feedback** in the console's report: response rate, mean overall,
    the rating spread, a mean per question, and the comments. Print it or take
    the CSV.
+
+### Trainee emails
+
+Certificates go to an email address, so the register keeps one per trainee:
+
+- **On the Trainees & sessions tab**, each trainee shows their email (or "no
+  email on file"), with an **Email** button to add or change it, and the
+  add-trainee form takes an optional email up front.
+- **At sign-in**, a trainee we already have an email for can leave the field
+  blank; one we don't is required to add it, and it's saved to their record for
+  next time. A trainee not on the roster always types one.
+- The stored address is never exposed to the anonymous sign-in page — it's
+  filled in and read only on the server, and only ever used to send that
+  trainee their own certificate.
 
 ---
 
