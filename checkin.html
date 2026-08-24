@@ -44,9 +44,9 @@
       </div>
 
       <div class="field">
-        <label class="fld" for="email">Your email</label>
+        <label class="fld" for="email" id="emailLabel">Your email</label>
         <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="name@nhs.net">
-        <p class="helper">Your certificate is sent here once you have completed the feedback form after the session.</p>
+        <p class="helper" id="emailHelper">Your certificate is sent here once you have completed the feedback form after the session.</p>
       </div>
 
       <button class="btn primary block" id="submit">I'm here — sign me in</button>
@@ -118,7 +118,7 @@ async function boot() {
 
   el('who').innerHTML =
     '<option value="">Select your name…</option>' +
-    roster.map((t) => `<option value="${ENT.esc(t.id)}">${ENT.esc(t.name)}</option>`).join('') +
+    roster.map((t) => `<option value="${ENT.esc(t.id)}" data-hasemail="${t.has_email ? '1' : ''}">${ENT.esc(t.name)}</option>`).join('') +
     '<option value="__other">My name is not on the list…</option>';
 
   el('grade').innerHTML = '<option value="">Select grade…</option>' +
@@ -128,7 +128,9 @@ async function boot() {
     const other = el('who').value === '__other';
     el('otherNameField').style.display = other ? 'block' : 'none';
     if (other) el('otherName').focus();
+    updateEmailField();
   };
+  updateEmailField();
 
   el('loading').style.display = 'none';
   el('form').style.display = 'block';
@@ -151,6 +153,20 @@ async function mirrorToRegister(traineeId, grade) {
   }
 }
 
+// Email is required only when we don't already hold one for the chosen trainee.
+// "Not on the list" always requires it, since there's no record to fall back to.
+function emailOnFileForSelection() {
+  const opt = el('who').selectedOptions[0];
+  return !!(opt && opt.dataset && opt.dataset.hasemail);
+}
+function updateEmailField() {
+  const onFile = emailOnFileForSelection() && el('who').value !== '__other';
+  el('emailLabel').textContent = onFile ? 'Your email (already on file)' : 'Your email';
+  el('emailHelper').textContent = onFile
+    ? "We have your email on file — leave this blank unless it has changed. Your certificate goes there after you complete the feedback form."
+    : "Your certificate is sent here once you complete the feedback form after the session.";
+}
+
 async function submit() {
   if (submitting) return;
   el('formError').innerHTML = '';
@@ -160,10 +176,18 @@ async function submit() {
              : (roster.find((t) => t.id === choice) || {}).name || '';
   const grade = el('grade').value;
   const email = el('email').value.trim();
+  const localTraineeId = choice === '__other' ? '' : choice;
+  const onFile = emailOnFileForSelection() && choice !== '__other';
 
   if (!name) return showError('Please choose or type your name.');
   if (!grade) return showError('Please select your grade.');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('Please enter a valid email address.');
+  // Must provide a valid email unless we already hold one; a typed value is
+  // always validated so a typo can't silently overwrite the address on file.
+  if (email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('Please enter a valid email address.');
+  } else if (!onFile) {
+    return showError('Please enter your email so your certificate can be sent.');
+  }
 
   submitting = true;
   const btn = el('submit');
@@ -171,14 +195,14 @@ async function submit() {
   btn.innerHTML = '<span class="spinner"></span>Signing you in…';
 
   try {
-    await ENT.api('check-in', { session_id: SESSION_ID, name, email, grade });
+    await ENT.api('check-in', { session_id: SESSION_ID, name, email, grade, local_trainee_id: localTraineeId });
     if (choice !== '__other') await mirrorToRegister(choice, grade);
     el('form').style.display = 'none';
     el('done').style.display = 'block';
     el('doneName').textContent = "You're signed in";
     el('doneMsg').textContent =
       `${name} (${grade}) — ${session.title}. After the session you'll get a short feedback form; ` +
-      `completing it releases your certificate to ${email}.`;
+      `completing it releases your certificate` + (email ? ` to ${email}` : ' to the email we hold for you') + `.`;
   } catch (err) {
     showError(err.message || 'Could not sign you in. Please try again.');
     btn.disabled = false;

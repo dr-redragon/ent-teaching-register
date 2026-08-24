@@ -130,14 +130,32 @@ async function issueCertificate(db: SupabaseClient, attendee: CertificateTarget,
 async function handleCheckIn(db: SupabaseClient, body: Record<string, unknown>) {
   const sessionId = cleanText(body.session_id, 64);
   const name = cleanText(body.name, 120);
-  const email = cleanEmail(body.email);
+  const typedEmail = cleanEmail(body.email);
   const grade = cleanText(body.grade, 40) || null;
+  const localTraineeId = cleanText(body.local_trainee_id, 64) || null;
 
   if (!sessionId || !name) return json({ error: "Session and name are required" }, 400);
-  if (!isEmail(email)) return json({ error: "A valid email address is required" }, 400);
 
   const { data: session } = await db.from("sessions").select("id,title,session_date").eq("id", sessionId).maybeSingle();
   if (!session) return json({ error: "This sign-in link is not valid any more" }, 404);
+
+  // Resolve the email server-side: a typed address is saved back onto the
+  // trainee's roster record (so it's on file next time); a blank one falls back
+  // to whatever is already on file. The stored address is never sent to the
+  // browser — it only travels as far as the attendee row here, for the
+  // certificate. Trainees not on the roster (localTraineeId null) must type one.
+  let email = typedEmail;
+  try {
+    const { data: resolved } = await db.rpc("resolve_trainee_email", {
+      p_trainee_id: localTraineeId,
+      p_email: typedEmail,
+    });
+    if (typeof resolved === "string" && resolved) email = cleanEmail(resolved);
+  } catch (err) {
+    console.error("resolve_trainee_email failed", err);   // fall back to the typed value
+  }
+
+  if (!isEmail(email)) return json({ error: "A valid email address is required" }, 400);
 
   const { data, error } = await db
     .from("attendees")
