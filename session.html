@@ -3,12 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
 <title>Session console — ENT Regional Teaching</title>
 <link rel="stylesheet" href="assets/pages.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   main{max-width:1080px}
+  .backbar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px}
+  .brand-link{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:8px}
+  .brand-link:hover .mark{color:#fff}
+  .brand-link:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
   .qr-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
   .qr-box{text-align:center;border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
   .qr-box h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-deep);margin-bottom:10px}
@@ -47,8 +53,10 @@
 
 <header class="masthead no-print">
   <div class="masthead-inner">
-    <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
-    <span class="mark">The Register</span>
+    <a class="brand-link" href="index.html" title="Back to the register home">
+      <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="masthead-logo" width="38" height="38">
+      <span class="mark">The Register</span>
+    </a>
     <span class="sub">Session console</span>
     <span style="flex:1"></span>
     <button class="btn ghost sm" id="logoutBtn" style="display:none">Log out</button>
@@ -56,6 +64,11 @@
 </header>
 
 <main>
+  <nav class="backbar no-print" aria-label="Back">
+    <a class="btn ghost sm" href="index.html#checkin">&larr; Back to Check-in / QR</a>
+    <a class="btn ghost sm" href="index.html#dash">Register home</a>
+  </nav>
+
   <div id="loading" class="lede">Loading the session…</div>
 
   <!-- login -->
@@ -116,6 +129,7 @@
         <button class="btn primary sm" id="pushAll">Email feedback link to everyone outstanding</button>
         <button class="btn ghost sm" id="pushSelected">Email selected only</button>
         <button class="btn ghost sm" id="previewCert">Preview certificate PDF</button>
+        <a class="btn ghost sm" id="editForm" href="#">Edit the feedback form</a>
         <button class="btn ghost sm" id="refresh">Refresh</button>
       </div>
       <p class="helper" id="emailWarning"></p>
@@ -134,6 +148,10 @@
         <button class="btn ghost sm" id="downloadCsv">Download responses (CSV)</button>
       </div>
     </div>
+
+    <nav class="backbar no-print" style="margin:16px 0 0" aria-label="Back">
+      <a class="btn ghost sm" href="index.html#checkin">&larr; Back to Check-in / QR</a>
+    </nav>
   </div>
 </main>
 
@@ -141,7 +159,7 @@
 <script>
 /* Organiser console for one session: the links to hand out, who has signed in,
    who still owes feedback, who has a certificate — and the anonymous report. */
-const sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
+let sb = null;    // created in boot(), once the deferred supabase-js has run
 const params = new URLSearchParams(location.search);
 const SESSION_ID = params.get('s') || '';
 const el = (id) => document.getElementById(id);
@@ -163,10 +181,11 @@ function note(msg, kind) {
 // register — no separate token to paste per browser. Signing in on one device
 // signs in on that device only, same as any normal login.
 async function boot() {
+  sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
   if (!SESSION_ID) return fail('No session in the link. Open this page from the register.');
   let rows;
   try {
-    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location');
+    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,form');
   } catch (e) { return fail('Could not reach the register.'); }
   session = rows && rows[0];
   if (!session) return fail('That session no longer exists.');
@@ -210,6 +229,7 @@ async function open() {
   el('title').textContent = session.title;
   el('subtitle').textContent = ENT.fmtDate(session.session_date) + (session.location ? ' · ' + session.location : '');
 
+  el('editForm').href = 'form-editor.html?s=' + encodeURIComponent(SESSION_ID);
   drawQr('qrCheckin', checkinUrl());
   drawQr('qrFeedback', feedbackUrl());
   el('urlCheckin').textContent = checkinUrl();
@@ -251,9 +271,23 @@ async function loadAttendees() {
   try {
     const res = await ENT.api('session-status', { session_id: SESSION_ID }, authToken);
     attendees = res.attendees || [];
-    el('emailWarning').textContent = res.email_configured
-      ? ''
-      : 'Email is not configured yet (RESEND_API_KEY is unset on the Supabase project), so nothing can be emailed and certificates are not being issued.';
+    // Three states worth telling apart: not set up, set up but sending from
+    // Resend's shared test address (which reaches nobody but the account
+    // holder), and properly configured.
+    const warn = el('emailWarning');
+    if (!res.email_configured) {
+      warn.className = 'notice bad';
+      warn.textContent = 'Email is not configured yet (RESEND_API_KEY is unset on the Supabase project), so nothing can be emailed and certificates are not being issued.';
+    } else if (res.email_sandbox) {
+      warn.className = 'notice warn';
+      warn.innerHTML = '<strong>Trainees will not receive these.</strong> Resend is still sending as <code>' +
+        ENT.esc(res.email_from) + '</code>, its shared test address, which only delivers to the Resend account ' +
+        'holder. Verify a domain in Resend and set <code>CERT_FROM_EMAIL</code> to an address at it.';
+    } else {
+      warn.className = 'helper';
+      warn.textContent = 'Sending as ' + (res.email_from || '') +
+        (res.email_reply_to && res.email_reply_to.length ? ' · replies go to ' + res.email_reply_to.join(', ') : '');
+    }
     renderAttendees();
   } catch (err) {
     fail(err.message, el('actionResult'));
@@ -335,20 +369,47 @@ async function pushFeedbackLink(ids) {
   try {
     const res = await ENT.api('email-feedback-link',
       Object.assign({ session_id: SESSION_ID }, ids ? { attendee_ids: ids } : {}), authToken);
-    const failed = (res.failures || []).length;
-    note(`Feedback link emailed to ${res.sent} of ${res.considered} outstanding attendee${res.considered === 1 ? '' : 's'}.` +
-         (failed ? ` ${failed} failed to send.` : ''), failed ? 'warn' : 'info');
+    const fails = res.failures || [];
+    let msg = `Feedback link emailed to ${res.sent} of ${res.considered} outstanding attendee${res.considered === 1 ? '' : 's'}.`;
+    if (fails.length) {
+      msg += '<ul style="margin:8px 0 0 18px">' + fails.map((f) =>
+        `<li>${ENT.esc(f.name || f.email || 'someone')} — ${ENT.esc(f.why || 'send failed')}</li>`).join('') + '</ul>';
+    } else if (res.sandbox) {
+      msg += ' <strong>But the sender is still Resend’s test address, so only the Resend account holder actually receives them.</strong>';
+    }
+    el('actionResult').innerHTML =
+      `<div class="notice ${(fails.length || res.sandbox) ? 'warn' : 'info'}">${msg}</div>`;
   } catch (err) { note(err.message, 'bad'); }
   btn.disabled = false; btn.textContent = label;
 }
 
 async function previewCertificate() {
   const btn = el('previewCert');
+  // The tab has to be opened synchronously, inside the click, or the browser
+  // treats it as an unrequested popup and silently blocks it — which is what
+  // made this button look dead. We open it now and point it at the PDF once
+  // it has been built; if the browser blocked even that, fall back to a
+  // download so the preview still reaches you.
+  const tab = window.open('', '_blank');
+  if (tab) tab.document.write('<title>Building the preview…</title><p style="font:15px system-ui;padding:24px">Building the certificate preview…</p>');
   btn.disabled = true;
   try {
     const res = await ENT.api('certificate-preview', { session_id: SESSION_ID, name: 'Dr Example Trainee' }, authToken);
-    if (res.blob) window.open(URL.createObjectURL(res.blob), '_blank');
-  } catch (err) { note(err.message, 'bad'); }
+    if (!res.ok || !res.blob || !res.blob.size) throw new Error('The certificate preview could not be generated.');
+    const url = URL.createObjectURL(res.blob);
+    if (tab) {
+      tab.location.href = url;
+    } else {
+      const a = document.createElement('a');
+      a.href = url; a.download = 'certificate-preview.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+      note('Your browser blocked the preview tab, so the PDF was downloaded instead.', 'warn');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    if (tab) tab.close();
+    note(err.message, 'bad');
+  }
   btn.disabled = false;
 }
 
@@ -366,6 +427,12 @@ async function loadReport() {
   } catch (err) {
     el('reportBody').innerHTML = `<div class="notice bad">${ENT.esc(err.message)}</div>`;
   }
+}
+
+// The question this answer key belongs to, from the session's own form.
+function questionDef(key) {
+  const qs = (session && session.form && session.form.questions) || [];
+  return qs.find((q) => q.id === key) || null;
 }
 
 const mean = (nums) => nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
@@ -419,20 +486,50 @@ function renderReport() {
         <span style="text-align:right;font-variant-numeric:tabular-nums">${c}</span></div>`;
     }).join('');
 
-  // per-question means, for whatever keys actually appear in the answers
+  // Per-question results, for whatever keys actually appear in the answers.
+  // Wording comes from this session's own form -- which is why the form is
+  // stored per session: rewording a question no longer relabels historic
+  // answers, and a question deleted from the form still reports what it got.
   const keys = [...new Set(responses.flatMap((r) => Object.keys(r.answers || {})))];
-  const labels = Object.fromEntries(ENT.QUESTIONS.map((q) => [q.key, q.text]));
   const qHtml = keys.length
     ? `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 9px">By question</h3>` +
       keys.map((k) => {
-        const vals = responses.map((r) => (r.answers || {})[k]).filter((v) => typeof v === 'number');
-        const m = mean(vals);
-        return `<div class="qrow">
-          <span>${ENT.esc(labels[k] || k)}</span>
-          <span class="muted-row" style="font-size:12px">${vals.length} repl${vals.length === 1 ? 'y' : 'ies'}</span>
-          <span class="bar"><span style="width:${m ? Math.round(m / 5 * 100) : 0}%"></span></span>
-          <span style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmt1(m)}</span>
-        </div>`;
+        const def = questionDef(k);
+        const label = ENT.esc(def ? def.text : k);
+        const vals = responses.map((r) => (r.answers || {})[k]);
+        const nums = vals.filter((v) => typeof v === 'number');
+
+        // A 1-5 scale averages; a choice or checkbox question is a tally; free
+        // text is listed rather than reduced to a number.
+        if (nums.length && (!def || def.type === 'scale')) {
+          const m = mean(nums);
+          return `<div class="qrow">
+            <span>${label}</span>
+            <span class="muted-row" style="font-size:12px">${nums.length} repl${nums.length === 1 ? 'y' : 'ies'}</span>
+            <span class="bar"><span style="width:${m ? Math.round(m / 5 * 100) : 0}%"></span></span>
+            <span style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmt1(m)}</span>
+          </div>`;
+        }
+
+        const picks = vals.flatMap((v) => Array.isArray(v) ? v : (v == null ? [] : [v]));
+        if (def && (def.type === 'choice' || def.type === 'checkbox')) {
+          const tally = {};
+          picks.forEach((v) => { tally[v] = (tally[v] || 0) + 1; });
+          const top = Math.max(1, ...Object.values(tally));
+          return `<div style="margin:14px 0 4px"><div style="font-weight:600;font-size:13.5px;margin-bottom:6px">${label}</div>` +
+            (def.options || Object.keys(tally)).map((o) => {
+              const c = tally[o] || 0;
+              return `<div class="qrow"><span style="padding-left:10px">${ENT.esc(o)}</span><span></span>
+                <span class="bar"><span style="width:${Math.round(c / top * 100)}%"></span></span>
+                <span style="text-align:right;font-variant-numeric:tabular-nums">${c}</span></div>`;
+            }).join('') + '</div>';
+        }
+
+        const texts = picks.filter((v) => typeof v === 'string' && v.trim());
+        if (!texts.length) return '';
+        return `<div style="margin:14px 0 4px"><div style="font-weight:600;font-size:13.5px;margin-bottom:6px">${label}` +
+          ` <span class="muted-row" style="font-weight:400;font-size:12px">(${texts.length})</span></div>` +
+          texts.map((t) => `<div class="comment">${ENT.esc(t)}</div>`).join('') + '</div>';
       }).join('')
     : '';
 

@@ -10,7 +10,7 @@
 // ever reads feedback rows back alongside a name or email.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4?target=deno";
 import { buildCertificatePdf } from "./certificate.ts";
-import { emailConfigured, sendEmail } from "./email.ts";
+import { emailConfigured, explainFailure, fromEmail, replyToAddresses, sendEmail, usingSandboxSender } from "./email.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +55,121 @@ const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 function feedbackUrl(sessionId: string) {
   return `${APP_BASE_URL}/feedback.html?s=${encodeURIComponent(sessionId)}`;
+}
+
+/* ------------------------------------------------------------- feedback forms */
+
+// A form is a question list. Validated here rather than trusted from the editor,
+// because the same shape is later read by the anonymous feedback page and by the
+// report, and a malformed one would break both for everybody.
+const QUESTION_TYPES = new Set(["scale", "short", "long", "choice", "checkbox"]);
+
+interface Question {
+  id: string; type: string; text: string; required: boolean;
+  options?: string[]; lowLabel?: string; highLabel?: string;
+  placeholder?: string; locked?: boolean;
+}
+
+function cleanForm(raw: unknown): { form: { title: string; questions: Question[] } } | { error: string } {
+  if (!raw || typeof raw !== "object") return { error: "The form is missing" };
+  const src = raw as Record<string, unknown>;
+  const list = Array.isArray(src.questions) ? src.questions : null;
+  if (!list) return { error: "The form has no questions" };
+  if (!list.length) return { error: "A form needs at least one question" };
+  if (list.length > 40) return { error: "That is more than 40 questions" };
+
+  const seen = new Set<string>();
+  const questions: Question[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const q = item as Record<string, unknown>;
+    const type = String(q.type ?? "scale");
+    if (!QUESTION_TYPES.has(type)) return { error: `Unknown question type: ${type}` };
+
+    // Answers are keyed by id, so a duplicate would silently overwrite another
+    // question's answers -- and an id that changes orphans historic responses.
+    let id = cleanText(q.id, 40).replace(/[^a-zA-Z0-9_]/g, "") || `q${questions.length + 1}`;
+    while (seen.has(id)) id = `${id}_${questions.length + 1}`;
+    seen.add(id);
+
+    const text = cleanText(q.text, 300);
+    if (!text) return { error: "Every question needs some text" };
+
+    const out: Question = { id, type, text, required: q.required === true };
+    if (type === "choice" || type === "checkbox") {
+      const opts = (Array.isArray(q.options) ? q.options : [])
+        .map((o) => cleanText(o, 120)).filter(Boolean).slice(0, 20);
+      if (opts.length < 2) return { error: `"${text}" needs at least two options` };
+      out.options = opts;
+    }
+    if (type === "scale") {
+      out.lowLabel = cleanText(q.lowLabel, 40) || "Strongly disagree";
+      out.highLabel = cleanText(q.highLabel, 40) || "Strongly agree";
+    }
+    if (type === "short" || type === "long") {
+      const ph = cleanText(q.placeholder, 120);
+      if (ph) out.placeholder = ph;
+    }
+    if (q.locked === true) out.locked = true;
+    questions.push(out);
+  }
+  if (!questions.length) return { error: "A form needs at least one question" };
+  return { form: { title: cleanText(src.title, 120) || "Session feedback", questions } };
+}
+
+async function templateForm(db: SupabaseClient) {
+  const { data } = await db.from("form_templates").select("form").eq("id", "default").maybeSingle();
+  return data?.form ?? null;
+}
+
+// Returns the form the editor should open: the session's own if it has one,
+// otherwise the shared template it would inherit.
+async function handleGetForm(db: SupabaseClient, body: Record<string, unknown>) {
+  const sessionId = cleanText(body.session_id, 64);
+  const template = await templateForm(db);
+  if (!sessionId) return json({ ok: true, form: template, source: "template", template });
+
+  const { data: session } = await db.from("sessions")
+    .select("id,title,session_date,form").eq("id", sessionId).maybeSingle();
+  if (!session) return json({ error: "Unknown session" }, 404);
+  return json({
+    ok: true,
+    session: { id: session.id, title: session.title, session_date: session.session_date },
+    form: session.form ?? template,
+    source: session.form ? "session" : "template",
+    template,
+  });
+}
+
+async function handleSaveForm(db: SupabaseClient, body: Record<string, unknown>) {
+  const sessionId = cleanText(body.session_id, 64);
+  const asTemplate = body.as_template === true;
+  const reset = body.reset === true;
+
+  // "Reset to the template" simply drops the session's own copy, so it goes back
+  // to inheriting -- and keeps inheriting future template edits.
+  if (reset) {
+    if (!sessionId) return json({ error: "Missing session" }, 400);
+    const { error } = await db.from("sessions").update({ form: null }).eq("id", sessionId);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true, form: await templateForm(db), source: "template" });
+  }
+
+  const checked = cleanForm(body.form);
+  if ("error" in checked) return json({ error: checked.error }, 400);
+
+  if (asTemplate) {
+    const { error } = await db.from("form_templates")
+      .upsert({ id: "default", form: checked.form, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    if (error) return json({ error: error.message }, 500);
+  }
+  if (sessionId) {
+    const { error } = await db.from("sessions").update({ form: checked.form }).eq("id", sessionId);
+    if (error) return json({ error: error.message }, 500);
+  }
+  if (!sessionId && !asTemplate) return json({ error: "Nothing to save to" }, 400);
+
+  return json({ ok: true, form: checked.form, source: sessionId ? "session" : "template", saved_template: asTemplate });
 }
 
 /* ---------------------------------------------------------------- certificates */
@@ -240,8 +355,10 @@ async function handleCreateSession(db: SupabaseClient, body: Record<string, unkn
     }
   }
 
+  // A brand-new session starts from the shared template, so it has a form the
+  // moment it is published and can be edited from there without touching it.
   const { data, error } = await db.from("sessions")
-    .insert({ title, session_date: sessionDate, location, local_id: localId })
+    .insert({ title, session_date: sessionDate, location, local_id: localId, form: await templateForm(db) })
     .select("*").single();
   if (error) return json({ error: error.message }, 500);
   return json({ ok: true, session: data, created: true });
@@ -257,7 +374,14 @@ async function handleSessionStatus(db: SupabaseClient, body: Record<string, unkn
     .eq("session_id", sessionId)
     .order("name");
   if (error) return json({ error: error.message }, 500);
-  return json({ ok: true, session, attendees, email_configured: emailConfigured(), feedback_url: feedbackUrl(sessionId) });
+  return json({
+    ok: true, session, attendees,
+    email_configured: emailConfigured(),
+    email_from: fromEmail(),
+    email_sandbox: emailConfigured() && usingSandboxSender(),
+    email_reply_to: replyToAddresses(),
+    feedback_url: feedbackUrl(sessionId),
+  });
 }
 
 async function handleSendCertificate(db: SupabaseClient, body: Record<string, unknown>) {
@@ -306,7 +430,8 @@ async function handleEmailFeedbackLink(db: SupabaseClient, body: Record<string, 
   const dateLabel = new Date(session.session_date + "T00:00:00Z")
     .toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
-  let sent = 0; const failures: string[] = [];
+  let sent = 0;
+  const failures: { name: string; email: string; why: string }[] = [];
   for (const t of targets ?? []) {
     const res = await sendEmail({
       to: t.email,
@@ -321,9 +446,62 @@ async function handleEmailFeedbackLink(db: SupabaseClient, body: Record<string, 
       </div>`,
       text: `Dear ${t.name},\n\nThank you for attending ${session.title} on ${dateLabel}. Please complete the anonymous feedback form to receive your certificate:\n${url}\n\nENT Regional Teaching Programme`,
     });
-    if (res.ok) sent++; else failures.push(res.error || "unknown");
+    if (res.ok) sent++;
+    else failures.push({ name: t.name, email: t.email, why: explainFailure(res.reason) });
   }
-  return json({ ok: true, sent, considered: targets?.length ?? 0, failures });
+  return json({
+    ok: true, sent, considered: targets?.length ?? 0, failures,
+    sandbox: usingSandboxSender(), from: fromEmail(),
+  });
+}
+
+// Chases the people the register shows as absent without an excuse. The
+// recipient list is worked out in the register (which is where eligibility,
+// excuses and long-term status live) and passed in; this end's job is to send
+// it as one BCC'd message per batch so no trainee sees who else was chased.
+async function handleChaseAbsences(db: SupabaseClient, body: Record<string, unknown>) {
+  if (!emailConfigured()) return json({ error: "Email is not configured yet (RESEND_API_KEY is not set)" }, 400);
+
+  const subject = cleanText(body.subject, 300);
+  const bodyText = String(body.body ?? "").trim().slice(0, 8000);
+  const replyTo = (Array.isArray(body.reply_to) ? body.reply_to : [])
+    .map((v) => cleanEmail(v)).filter(isEmail).slice(0, 4);
+
+  const recipients = (Array.isArray(body.recipients) ? body.recipients : [])
+    .map((v) => cleanEmail(v)).filter(isEmail);
+  const unique = [...new Set(recipients)];
+
+  if (!subject) return json({ error: "The email needs a subject" }, 400);
+  if (!bodyText) return json({ error: "The email needs a message" }, 400);
+  if (!unique.length) return json({ error: "Nobody to send to" }, 400);
+  if (unique.length > 200) return json({ error: "That is more than 200 recipients - split it up" }, 400);
+
+  // Everyone goes in BCC so recipients cannot see each other. The visible To:
+  // is the sending identity itself, which is the usual way to do this.
+  const visibleTo = fromEmail();
+  const html = `<div style="font-family:Segoe UI,system-ui,sans-serif;font-size:15px;color:#15211c;line-height:1.55">` +
+    bodyText.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("") +
+    `</div>`;
+
+  // Resend caps a single message at 50 recipients, so send in batches.
+  const BATCH = 45;
+  let sent = 0;
+  const failures: { batch: number; why: string }[] = [];
+  for (let i = 0; i < unique.length; i += BATCH) {
+    const slice = unique.slice(i, i + BATCH);
+    const res = await sendEmail({
+      to: visibleTo, bcc: slice, subject, html, text: bodyText,
+      replyTo: replyTo.length ? replyTo : undefined,
+    });
+    if (res.ok) sent += slice.length;
+    else failures.push({ batch: Math.floor(i / BATCH) + 1, why: explainFailure(res.reason) });
+  }
+
+  return json({
+    ok: true, sent, considered: unique.length, failures,
+    sandbox: usingSandboxSender(), from: visibleTo,
+    reply_to: replyTo,
+  });
 }
 
 // Renders a certificate without sending anything, so the design can be checked.
@@ -352,6 +530,7 @@ async function handleCertificatePreview(db: SupabaseClient, body: Record<string,
 
 const ORGANISER_ACTIONS = new Set([
   "create-session", "session-status", "send-certificate", "email-feedback-link", "certificate-preview",
+  "chase-absences", "get-form", "save-form",
 ]);
 
 Deno.serve(async (req) => {
@@ -380,6 +559,9 @@ Deno.serve(async (req) => {
       case "send-certificate":    return await handleSendCertificate(db, body);
       case "email-feedback-link": return await handleEmailFeedbackLink(db, body);
       case "certificate-preview": return await handleCertificatePreview(db, body);
+      case "chase-absences":      return await handleChaseAbsences(db, body);
+      case "get-form":            return await handleGetForm(db, body);
+      case "save-form":           return await handleSaveForm(db, body);
       default:                    return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {

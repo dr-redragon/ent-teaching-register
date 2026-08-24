@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://ecyhvubwcqqghumnyxuu.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ecyhvubwcqqghumnyxuu.supabase.co">
 <title>Session feedback — ENT Regional Teaching</title>
 <link rel="stylesheet" href="assets/pages.css">
 <style>
@@ -17,6 +19,11 @@
   .scale-ends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:5px}
   .q{margin-bottom:20px}
   .q .qtext{font-weight:600;font-size:14.5px;margin-bottom:8px}
+  .opt{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line);
+    border-radius:9px;background:#fff;margin-bottom:7px;cursor:pointer}
+  .opt:hover{border-color:var(--moss)}
+  .opt input{width:auto;margin-top:2px;flex-shrink:0}
+  .opt.sel{border-color:var(--moss);background:#f2f6f1}
   .anon{display:flex;gap:10px;align-items:flex-start}
   .anon .lock{font-size:17px;line-height:1.3}
 </style>
@@ -25,7 +32,7 @@
 
 <header class="masthead">
   <div class="masthead-inner">
-    <img src="assets/logo.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
+    <img src="assets/logo-mark.png" alt="North West ENT Regional Trainees Society" class="masthead-logo">
     <span class="mark">The Register</span>
     <span class="sub">ENT Regional Teaching</span>
   </div>
@@ -61,7 +68,7 @@
 
       <div id="questions"></div>
 
-      <div class="field">
+      <div class="field" id="legacyComments">
         <label class="fld" for="comments">Anything else? (optional)</label>
         <textarea id="comments" placeholder="What worked well, what could be better…"></textarea>
       </div>
@@ -86,9 +93,24 @@ const params = new URLSearchParams(location.search);
 const SESSION_ID = params.get('s') || '';
 const el = (id) => document.getElementById(id);
 
-const QUESTIONS = ENT.QUESTIONS;   // shared with the report page, in assets/config.js
-const AGREE_ENDS = ['1 — strongly disagree', '5 — strongly agree'];
-const OVERALL_ENDS = ['1 — poor', '5 — excellent'];
+/* The question set comes from the session's own form (editable per session in
+   form-editor.html), falling back to the shared template and, if even that is
+   unreachable, to the built-in list in assets/config.js -- a trainee must never
+   be shown a blank form because a lookup failed. */
+let QUESTIONS = [];
+let formTitle = 'Session feedback';
+
+const LEGACY_FORM = {
+  title: 'Session feedback',
+  questions: [
+    { id:'overall', type:'scale', text:'Overall, how would you rate this session?', required:true,
+      lowLabel:'Poor', highLabel:'Excellent' },
+    ...ENT.QUESTIONS.map((q) => ({ id:q.key, type:'scale', text:q.text, required:false,
+      lowLabel:'Strongly disagree', highLabel:'Strongly agree' })),
+    { id:'comments', type:'long', text:'Anything else?', required:false,
+      placeholder:'What worked well, what could be better…' },
+  ],
+};
 
 let session = null;
 let submitting = false;
@@ -103,33 +125,63 @@ function showError(message) {
   el('formError').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function scaleField(key, text, required, ends) {
+function questionField(q) {
+  const label = `<div class="qtext">${ENT.esc(q.text)}` +
+    (q.required ? '' : ' <span style="font-weight:400;color:var(--muted)">(optional)</span>') + '</div>';
+
+  if (q.type === 'choice' || q.type === 'checkbox') {
+    const kind = q.type === 'choice' ? 'radio' : 'checkbox';
+    const opts = (q.options || []).map((o, i) =>
+      `<label class="opt"><input type="${kind}" name="${ENT.esc(q.id)}" value="${ENT.esc(o)}"` +
+      ` id="${ENT.esc(q.id)}_${i}">${ENT.esc(o)}</label>`).join('');
+    return `<div class="q" data-q="${ENT.esc(q.id)}">${label}<div role="group" aria-label="${ENT.esc(q.text)}">${opts}</div></div>`;
+  }
+
+  if (q.type === 'short' || q.type === 'long') {
+    const ph = ENT.esc(q.placeholder || '');
+    const field = q.type === 'long'
+      ? `<textarea id="f_${ENT.esc(q.id)}" placeholder="${ph}"></textarea>`
+      : `<input id="f_${ENT.esc(q.id)}" placeholder="${ph}">`;
+    return `<div class="q" data-q="${ENT.esc(q.id)}">${label}${field}</div>`;
+  }
+
+  // 1-5 scale
   const options = [1, 2, 3, 4, 5].map((n) =>
-    `<label><input type="radio" name="${key}" value="${n}"><span>${n}</span></label>`).join('');
-  return `<div class="q">
-    <div class="qtext">${ENT.esc(text)}${required ? '' : ' <span style="font-weight:400;color:var(--muted)">(optional)</span>'}</div>
-    <div class="scale" role="radiogroup" aria-label="${ENT.esc(text)}">${options}</div>
-    <div class="scale-ends"><span>${ENT.esc(ends[0])}</span><span>${ENT.esc(ends[1])}</span></div>
+    `<label><input type="radio" name="${ENT.esc(q.id)}" value="${n}"><span>${n}</span></label>`).join('');
+  return `<div class="q" data-q="${ENT.esc(q.id)}">${label}
+    <div class="scale" role="radiogroup" aria-label="${ENT.esc(q.text)}">${options}</div>
+    <div class="scale-ends"><span>1 — ${ENT.esc(q.lowLabel || 'strongly disagree')}</span>` +
+    `<span>5 — ${ENT.esc(q.highLabel || 'strongly agree')}</span></div>
   </div>`;
+}
+
+// The overall rating is stored in its own column, so it is the one question the
+// form always needs. If an edited form has dropped it, put it back.
+function normaliseForm(f) {
+  const questions = (f && Array.isArray(f.questions) ? f.questions : []).filter((q) => q && q.text);
+  if (!questions.length) return LEGACY_FORM;
+  if (!questions.some((q) => q.id === 'overall')) questions.unshift(LEGACY_FORM.questions[0]);
+  return { title: (f && f.title) || 'Session feedback', questions };
 }
 
 async function boot() {
   if (!SESSION_ID) return fail('This feedback link is missing its session. Please use the link or QR code for your session.');
 
-  let rows;
+  // Session and attendee list are fetched together rather than one after the
+  // other -- it halves the wait before the form appears.
+  // Only checked-in attendees are readable, and only their id and name.
+  let rows, attendees = [];
   try {
-    rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location');
+    const [r, a] = await Promise.all([
+      ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,form'),
+      ENT.rest('attendees?session_id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,name&order=name').catch(() => []),
+    ]);
+    rows = r; attendees = a || [];
   } catch (e) {
     return fail('Could not reach the register. Check your connection and try again.');
   }
   session = rows && rows[0];
   if (!session) return fail('This feedback link is not valid any more.');
-
-  // Only checked-in attendees are readable, and only their id and name.
-  let attendees = [];
-  try {
-    attendees = await ENT.rest('attendees?session_id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,name&order=name');
-  } catch (e) { attendees = []; }
 
   el('sessionLine').innerHTML =
     `<span class="session-line">${ENT.esc(session.title)}</span><br>` +
@@ -153,9 +205,24 @@ async function boot() {
     if (byEmail) el('email').focus();
   };
 
-  el('questions').innerHTML =
-    scaleField('overall', 'Overall, how would you rate this session?', true, OVERALL_ENDS) +
-    QUESTIONS.map((q) => scaleField(q.key, q.text, false, AGREE_ENDS)).join('');
+  // The session's own form, or the shared template if it has none yet.
+  let f = session.form;
+  if (!f) {
+    try {
+      const rows = await ENT.rest('form_templates?id=eq.default&select=form');
+      f = rows && rows[0] && rows[0].form;
+    } catch (e) { /* fall through to the built-in set */ }
+  }
+  const active = normaliseForm(f);
+  QUESTIONS = active.questions;
+  formTitle = active.title;
+  document.querySelector('#form h1').textContent = formTitle;
+  el('questions').innerHTML = QUESTIONS.map(questionField).join('');
+
+  // The free-text box used to be a fixed field below the questions; it is now
+  // just another question, so hide the old one unless this form has no
+  // long-answer question of its own.
+  if (QUESTIONS.some((q) => q.type === 'long')) el('legacyComments').style.display = 'none';
 
   el('loading').style.display = 'none';
   el('form').style.display = 'block';
@@ -182,11 +249,36 @@ async function submit() {
   }
   if (!overall) return showError('Please give an overall rating.');
 
+  // Answers are keyed by question id. The question text travels with the
+  // session's form, so the report can still label an answer correctly after a
+  // question has been reworded.
   const answers = {};
-  QUESTIONS.forEach((q) => {
-    const v = radioValue(q.key);
-    if (v) answers[q.key] = v;
-  });
+  const commentBits = [];
+  for (const q of QUESTIONS) {
+    if (q.id === 'overall') continue;                       // stored in its own column
+    let v = null;
+    if (q.type === 'scale') v = radioValue(q.id);
+    else if (q.type === 'choice') { const p = document.querySelector(`input[name="${q.id}"]:checked`); v = p ? p.value : null; }
+    else if (q.type === 'checkbox') {
+      const picked = [...document.querySelectorAll(`input[name="${q.id}"]:checked`)].map((i) => i.value);
+      v = picked.length ? picked : null;
+    } else {
+      const field = document.getElementById('f_' + q.id);
+      v = field && field.value.trim() ? field.value.trim() : null;
+      if (v && q.type === 'long') commentBits.push(QUESTIONS.length > 1 ? `${q.text}\n${v}` : v);
+    }
+    if (q.required && (v === null || v === '' || (Array.isArray(v) && !v.length))) {
+      showError(`Please answer: ${q.text}`);
+      document.querySelector(`.q[data-q="${q.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (v !== null) answers[q.id] = v;
+  }
+
+  // comments is a real column on feedback_responses, so long-answer text is
+  // mirrored into it as well as being kept, keyed, in answers.
+  const legacy = el('comments').value.trim();
+  if (legacy) commentBits.push(legacy);
 
   submitting = true;
   const btn = el('submit');
@@ -199,7 +291,7 @@ async function submit() {
       identifier,
       overall_rating: overall,
       answers,
-      comments: el('comments').value.trim(),
+      comments: commentBits.join('\n\n'),
     });
 
     const messages = {
