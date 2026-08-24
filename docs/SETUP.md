@@ -70,13 +70,11 @@ trainees, verify a domain in Resend (a few DNS records), then set
 
 ### Your logo
 
-`assets/logo.png` is already in the repo and is what certificates use by
-default — nothing to configure. It's a hand-drawn recreation of the North West
-ENT Regional Trainees Society badge (there's no way for this session to save an
-image someone pastes into chat to disk), close in composition and colour but
-not a pixel-exact copy. Send the real file and it's a straight swap — replace
-`assets/logo.png`, push, done. If the fetch ever fails for any reason,
-certificates still go out, just without the logo.
+`assets/logo.png` is the real North West ENT Regional Trainees Society badge,
+already in the repo, and is what certificates use by default — nothing to
+configure. To swap it for a different version later, replace that file and
+push; if the fetch ever fails for any reason, certificates still go out, just
+without the logo.
 
 ---
 
