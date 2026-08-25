@@ -30,7 +30,12 @@
   .q-top{display:flex;gap:10px;align-items:flex-start}
   .q-top .num{font-size:12px;font-weight:700;color:var(--muted);padding-top:12px;min-width:20px}
   .q-top .grow{flex:1;min-width:0}
-  .q-text{font-weight:600}
+  /* The question box is a textarea, not a single-line input, so a long question
+     is fully visible instead of scrolling out of sight -- which on a phone meant
+     you could only ever read the first few words. It grows with its content and
+     never shows its own scrollbar or resize handle. */
+  .q-text{font-weight:600;width:100%;display:block;resize:none;overflow:hidden;
+    min-height:0;line-height:1.45;padding:10px 12px}
   .q-meta{display:grid;grid-template-columns:170px 1fr;gap:9px;margin-top:9px}
   @media(max-width:620px){.q-meta{grid-template-columns:1fr}}
   .q-ends{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
@@ -67,6 +72,16 @@
   .pfake{border:1px solid var(--line);border-radius:9px;background:#fff;padding:10px 12px;color:#b7b2a4;font-size:13.5px}
   .pfake.tall{min-height:70px}
 
+  @media(max-width:820px){
+    input,select,textarea{font-size:16px}
+    /* Two columns of scale labels on a phone truncated both of them
+       ("Strongly disag…" / "Strongly agre…"). Stack them instead. */
+    .q-ends{grid-template-columns:1fr}
+    .q-top{gap:7px}
+    .q-top .num{padding-top:11px;min-width:14px}
+    .q-card{padding:12px 11px}
+    .q-foot{gap:8px}
+  }
   .toolbar{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
   .addrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
   .savebar{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);
@@ -325,7 +340,7 @@ function questionHtml(q, i) {
     <div class="q-top">
       <div class="num">${i + 1}</div>
       <div class="grow">
-        <input class="q-text" data-f="text" value="${ENT.esc(q.text)}" maxlength="300" placeholder="Ask something…">
+        <textarea class="q-text" data-f="text" rows="1" maxlength="300" placeholder="Ask something…">${ENT.esc(q.text)}</textarea>
         <div class="q-meta">
           <select data-f="type" ${q.locked ? 'disabled' : ''}>
             ${Object.entries(TYPE_LABEL).map(([v, l]) => `<option value="${v}" ${q.type === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -354,11 +369,28 @@ function questionHtml(q, i) {
   </div>`;
 }
 
+// Grow a question box to fit whatever is typed in it. Two details matter:
+// height must be reset to auto first or the box can only ever get taller, and
+// because everything here is border-box, scrollHeight (which excludes the
+// border) would leave the last line clipped by the border width.
+function autosize(box) {
+  box.style.height = 'auto';
+  const border = box.offsetHeight - box.clientHeight;
+  box.style.height = (box.scrollHeight + border) + 'px';
+}
+function autosizeAll() {
+  el('questions').querySelectorAll('.q-text').forEach(autosize);
+}
+
 function renderAll() {
   el('formTitle').value = form.title || '';
   el('questions').innerHTML = form.questions.map(questionHtml).join('');
+  autosizeAll();
   renderPreview();
 }
+
+// Rotating a phone changes the width, so the wrap points move with it.
+addEventListener('resize', autosizeAll);
 
 // Field edits are applied in place and only repaint the preview, so typing never
 // loses focus. Anything structural (type, options, order) does a full re-render.
@@ -367,7 +399,10 @@ el('questions').addEventListener('input', (e) => {
   const q = form.questions[+card.dataset.i];
   const f = e.target.dataset.f;
   if (f === 'required') { q.required = e.target.checked; renderPreview(); return; }
-  if (f && f !== 'type') { q[f] = e.target.value; renderPreview(); return; }
+  if (f && f !== 'type') {
+    if (e.target.classList.contains('q-text')) autosize(e.target);
+    q[f] = e.target.value; renderPreview(); return;
+  }
   if (e.target.dataset.opt !== undefined && !e.target.dataset.act) {
     q.options[+e.target.dataset.opt] = e.target.value; renderPreview();
   }
@@ -395,6 +430,10 @@ el('questions').addEventListener('click', (e) => {
     case 'addopt': q.options.push('Option ' + (q.options.length + 1)); return renderAll();
     case 'rmopt':  q.options.splice(+btn.dataset.opt, 1); return renderAll();
   }
+});
+
+el('questions').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.classList.contains('q-text')) e.preventDefault();
 });
 
 el('formTitle').oninput = () => { form.title = el('formTitle').value; renderPreview(); };
