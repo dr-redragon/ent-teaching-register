@@ -202,6 +202,22 @@ you:
 The subject and body are prefilled and fully editable. Nothing is sent until you
 press **Send**.
 
+### Trainee grades
+
+A trainee's grade looks after itself: whatever they pick on the sign-in form
+becomes their grade in the register, and the newest sign-in always wins. Nothing
+to do at the start of a rotation.
+
+To set or correct one by hand — for someone who hasn't signed in yet, or who
+picked the wrong thing — use **Edit** on their row on the *Trainees & sessions*
+tab. The same dialog edits their name and email. A grade you set by hand sticks
+until they sign in again with a different one, at which point the sign-in wins
+again.
+
+Past academic years are unaffected by any of this: the attendance grid reads
+each year's grade out of that year's sign-ins, so a trainee who was ST4 in
+2024/25 still shows ST4 there after they become ST5.
+
 ### Trainee emails
 
 Certificates go to an email address, so the register keeps one per trainee:
