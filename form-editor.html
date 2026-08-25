@@ -103,7 +103,7 @@
 
 <main>
   <nav class="backbar" aria-label="Back">
-    <a class="btn ghost sm" href="index.html#checkin">&larr; Back to Check-in / QR</a>
+    <a class="btn ghost sm" href="index.html#checkin" data-back>&larr; Back to Check-in / QR</a>
     <span id="scopeLabel" class="helper" style="margin:0"></span>
   </nav>
 
@@ -506,6 +506,29 @@ el('reset').onclick = async () => {
     note('Back to the template.', 'info');
   } catch (err) { note(ENT.esc(err.message), 'bad'); }
 };
+
+/* "Back to Check-in / QR": if we arrived here from the register in this tab, a
+   real history back restores it from the browser's cache -- instantly, on the
+   tab you were on, scrolled where you left it. Re-navigating by URL instead
+   re-downloads and re-boots the whole register, which is what made going back
+   feel slow. The href stays a genuine link so long-press, middle-click and
+   open-in-new-tab all still behave. */
+const cameFromRegister = (() => {
+  try {
+    const r = new URL(document.referrer);
+    return r.origin === location.origin && /(^|\/)index\.html$/.test(r.pathname);
+  } catch (e) { return false; }
+})();
+
+function wireBackLinks() {
+  document.querySelectorAll('a[data-back]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (cameFromRegister && history.length > 1) { e.preventDefault(); history.back(); }
+    });
+  });
+}
+wireBackLinks();
 
 // Deferred supabase-js has run by DOMContentLoaded.
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
