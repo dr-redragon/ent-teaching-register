@@ -12,6 +12,24 @@
 <style>
   main{max-width:1080px}
   .backbar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px}
+  /* Certificate preview, shown in the page. Opening a popup and pointing it at a
+     blob: URL is refused by several browsers -- iOS Safari never shows one --
+     which is what made the preview button look dead. */
+  .cert-back{display:none;position:fixed;inset:0;z-index:600;background:rgba(21,33,28,.55);
+    align-items:center;justify-content:center;padding:14px}
+  .cert-back.show{display:flex}
+  .cert-card{background:var(--card);border-radius:14px;box-shadow:0 20px 60px rgba(21,33,28,.32);
+    width:100%;max-width:900px;max-height:92vh;display:flex;flex-direction:column}
+  .cert-head{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+  .cert-head h2{margin:0;font-size:18px}
+  .cert-body{flex:1;min-height:0;padding:14px 20px;overflow-y:auto}
+  .cert-body iframe{width:100%;height:min(62vh,520px);border:1px solid var(--line);
+    border-radius:10px;background:#fff;display:block}
+  .cert-foot{padding:13px 20px;border-top:1px solid var(--line);display:flex;gap:9px;
+    flex-wrap:wrap;align-items:center;flex-shrink:0}
+  .cert-foot .spacer{flex:1}
+  .cert-status{padding:26px 4px;text-align:center;color:var(--muted);font-size:14px}
   .brand-link{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:8px}
   .brand-link:hover .mark{color:#fff}
   .brand-link:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
@@ -88,6 +106,23 @@
     <button class="btn primary block" id="unlockBtn">Sign in</button>
     <p class="helper">No account? Ask whoever administers this register to add you under Supabase →
       Authentication → Users.</p>
+  </div>
+
+  <!-- certificate preview -->
+  <div class="cert-back no-print" id="certModal" role="dialog" aria-label="Certificate preview">
+    <div class="cert-card">
+      <div class="cert-head">
+        <h2>Certificate preview</h2>
+        <button class="btn ghost sm" id="certClose">Close</button>
+      </div>
+      <div class="cert-body" id="certBody"></div>
+      <div class="cert-foot">
+        <a class="btn primary sm" id="certOpen" href="#" target="_blank" rel="noopener">Open in a new tab</a>
+        <a class="btn ghost sm" id="certDownload" href="#" download="certificate-preview.pdf">Download PDF</a>
+        <span class="spacer"></span>
+        <span class="helper" style="margin:0">Sample name and this session's details. Nothing is sent.</span>
+      </div>
+    </div>
   </div>
 
   <div id="console" style="display:none">
@@ -250,6 +285,9 @@ async function open() {
   el('pushAll').onclick = () => pushFeedbackLink(null);
   el('pushSelected').onclick = () => pushFeedbackLink(selectedIds());
   el('previewCert').onclick = previewCertificate;
+  el('certClose').onclick = closeCertModal;
+  el('certModal').addEventListener('click', (e) => { if (e.target === el('certModal')) closeCertModal(); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCertModal(); });
   el('selectAll').onchange = () => {
     document.querySelectorAll('#attendeeTable tbody input[type=checkbox]')
       .forEach((c) => { c.checked = el('selectAll').checked; });
@@ -386,34 +424,54 @@ async function pushFeedbackLink(ids) {
   btn.disabled = false; btn.textContent = label;
 }
 
+/* Certificate preview.
+   Previously this opened a blank popup and pointed it at a blob: URL once the
+   PDF arrived. Browsers refuse that in several combinations -- iOS Safari never
+   renders a blob: PDF in a new tab at all -- and the only feedback on failure
+   went to #actionResult, which sits above the attendee table and is off-screen
+   on a phone. So the button genuinely did nothing you could see.
+
+   It now shows the PDF in the page. No popup is involved, the click always has
+   a visible effect, and "Open in a new tab" runs inside a real click of its own,
+   which browsers do allow. */
+let certUrl = null;
+
+function closeCertModal() {
+  el('certModal').classList.remove('show');
+  if (certUrl) { URL.revokeObjectURL(certUrl); certUrl = null; }
+  el('certBody').innerHTML = '';
+}
+
 async function previewCertificate() {
   const btn = el('previewCert');
-  // The tab has to be opened synchronously, inside the click, or the browser
-  // treats it as an unrequested popup and silently blocks it — which is what
-  // made this button look dead. We open it now and point it at the PDF once
-  // it has been built; if the browser blocked even that, fall back to a
-  // download so the preview still reaches you.
-  const tab = window.open('', '_blank');
-  if (tab) tab.document.write('<title>Building the preview…</title><p style="font:15px system-ui;padding:24px">Building the certificate preview…</p>');
-  btn.disabled = true;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Building…';
+
+  el('certBody').innerHTML = '<div class="cert-status">Building the certificate preview…</div>';
+  el('certOpen').style.display = 'none';
+  el('certDownload').style.display = 'none';
+  el('certModal').classList.add('show');
+
   try {
     const res = await ENT.api('certificate-preview', { session_id: SESSION_ID, name: 'Dr Example Trainee' }, authToken);
-    if (!res.ok || !res.blob || !res.blob.size) throw new Error('The certificate preview could not be generated.');
-    const url = URL.createObjectURL(res.blob);
-    if (tab) {
-      tab.location.href = url;
-    } else {
-      const a = document.createElement('a');
-      a.href = url; a.download = 'certificate-preview.pdf';
-      document.body.appendChild(a); a.click(); a.remove();
-      note('Your browser blocked the preview tab, so the PDF was downloaded instead.', 'warn');
-    }
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (!res.blob || !res.blob.size) throw new Error('The server did not return a certificate.');
+    if (!res.ok) throw new Error('The certificate could not be generated.');
+
+    certUrl = URL.createObjectURL(res.blob);
+    el('certOpen').href = certUrl;
+    el('certDownload').href = certUrl;
+    el('certOpen').style.display = '';
+    el('certDownload').style.display = '';
+    // Desktop browsers render the PDF here; iOS Safari will not, so the two
+    // buttons below are the way out and are always present.
+    el('certBody').innerHTML =
+      '<iframe title="Certificate preview" src="' + certUrl + '"></iframe>' +
+      '<p class="helper">If nothing appears above, use <strong>Open in a new tab</strong> or ' +
+      '<strong>Download PDF</strong> — some phone browsers cannot show a PDF inline.</p>';
   } catch (err) {
-    if (tab) tab.close();
-    note(err.message, 'bad');
+    el('certBody').innerHTML = '<div class="notice bad" style="margin:0">' + ENT.esc(err.message) + '</div>';
   }
-  btn.disabled = false;
+  btn.disabled = false; btn.textContent = label;
 }
 
 /* ---------------------------------------------------------------- report */
