@@ -70,9 +70,12 @@
   .panel-lede{color:var(--muted);font-size:14px;margin-bottom:22px;max-width:62ch}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
   .pad{padding:clamp(16px,2.4vw,24px)}
-  button.btn{
+  /* Not `button.btn`: the check-in tab styles several links as buttons, and an
+     element-qualified selector left them as bare text. */
+  .btn{
     appearance:none;cursor:pointer;font:inherit;font-weight:600;font-size:14px;
     border-radius:9px;padding:9px 16px;border:1px solid transparent;transition:.15s;
+    text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;
   }
   .btn.primary{background:var(--moss);color:#fff}
   .btn.primary:hover{background:var(--moss-deep)}
@@ -719,8 +722,14 @@ function setSyncStatus(msg, ok){
   el.style.color = ok === false ? '#c0613a' : ok === true ? '#3f6b4f' : '#7a7568';
 }
 
-async function loadDB(){
-  // Try Supabase first (cross-device source of truth)
+// The copy this device last saw. Reading it is instant, so the register can be
+// on screen before the network has said anything.
+function cachedDB(){
+  try{ const ls=localStorage.getItem(STORE_KEY); return ls?JSON.parse(ls):null; }catch(e){ return null; }
+}
+
+// The authoritative copy. Cross-device source of truth; also refreshes the cache.
+async function remoteDB(){
   try{
     const {data,error} = await sb.from('register_store').select('data,updated_at').eq('id','default').maybeSingle();
     if(!error && data){
@@ -730,17 +739,29 @@ async function loadDB(){
       return data.data;
     }
   }catch(e){}
-  // Fall back to localStorage / window.storage
   try{
     if(typeof window.storage!=='undefined'){
       const r = await window.storage.get(STORE_KEY);
       if(r) return JSON.parse(r.value);
     }
   }catch(e){}
-  try{ const ls=localStorage.getItem(STORE_KEY); return ls?JSON.parse(ls):null; }catch(e){ return null; }
+  return null;
 }
 
+// Resolves once the authoritative copy has been fetched (or the fetch has given
+// up). Saves wait on this, so an edit made against the instantly-painted cached
+// copy can never overwrite a newer one from another device.
+let dbReady = null;
+
+// Set the moment the organiser changes anything. If they edit during the short
+// window between the cached paint and the database replying, their edit must win
+// -- otherwise reconciling would silently throw it away.
+let dbDirty = false;
+
 async function saveDB(){
+  dbDirty = true;                      // claim DB before anything can reconcile over it
+  // Never write back over a newer copy we simply hadn't loaded yet.
+  if(dbReady) { try{ await dbReady; }catch(e){} }
   const payload = JSON.stringify(DB);
   // Save locally immediately so the UI never waits
   try{ localStorage.setItem(STORE_KEY, payload); }catch(e){}
@@ -1574,7 +1595,7 @@ function renderCloudPanel(){
        </div>
        <div class="row-actions" style="margin-top:12px">
          <button class="btn primary sm" id="cloudPublish">Publish this session</button>
-         <a class="btn ghost sm" href="form-editor.html" target="_blank" rel="noopener">Edit the feedback form template</a>
+         <a class="btn ghost sm" href="form-editor.html">Edit the feedback form template</a>
        </div>
        <p class="helper">A published session starts from the template, then can be edited on its own.</p>`;
     document.getElementById('cloudPublish').onclick=()=>publishSession(s);
@@ -1589,11 +1610,11 @@ function renderCloudPanel(){
      <div class="pill-row" style="gap:8px">
        <a class="btn ghost sm" href="${pageUrl('checkin.html',s.cloudId)}" target="_blank" rel="noopener">Open sign-in page</a>
        <a class="btn ghost sm" href="${pageUrl('feedback.html',s.cloudId)}" target="_blank" rel="noopener">Open feedback form</a>
-       <a class="btn primary sm" href="${pageUrl('session.html',s.cloudId)}" target="_blank" rel="noopener">Session console</a>
+       <a class="btn primary sm" href="${pageUrl('session.html',s.cloudId)}">Session console</a>
      </div>
      <div class="row-actions" style="margin-top:12px">
        <button class="btn ghost sm" id="cloudCopyFeedback">Copy feedback link</button>
-       <a class="btn ghost sm" href="${pageUrl('form-editor.html',s.cloudId)}" target="_blank" rel="noopener">Edit the feedback form</a>
+       <a class="btn ghost sm" href="${pageUrl('form-editor.html',s.cloudId)}">Edit the feedback form</a>
        <button class="btn ghost sm" id="cloudSync">Re-sync sign-ins</button>
      </div>
      <p class="helper" id="cloudSyncMsg">Sign-ins land in the attendance grid by themselves. Re-sync is the repair
@@ -2419,7 +2440,7 @@ tbody tr:last-child td{border-bottom:none}
    KIOSK (QR form target)
    ============================================================ */
 // Anonymous QR sign-in for a teaching day that has not been published to the
-// cloud yet (see the Check-in tab). Deliberately does not touch loadDB()/saveDB()
+// cloud yet (see the Check-in tab). Deliberately does not touch remoteDB()/saveDB()
 // or anything requiring an organiser login — it only ever calls the two RPCs
 // below, which are the sole anon-accessible surface onto the register data.
 async function bootKiosk(sessId){
@@ -2560,19 +2581,57 @@ function seedData(){
 // Loads the register and renders the app. Only ever runs once a Supabase
 // session exists — everything it touches (register_store) requires the
 // authenticated role.
-async function bootApp(){
-  hideLogin();
-  DB = await loadDB();
-  if(!DB){ DB = seedData(); await saveDB(); }
-  // ensure shape
-  DB.trainees??=[]; DB.sessions??=[]; DB.attendance??={}; DB.excused??=[]; DB.status??=[];
+function normaliseDB(db){
+  db.trainees??=[]; db.sessions??=[]; db.attendance??={}; db.excused??=[]; db.status??=[];
   // migrate legacy 'idt' (single transfer type) to idt_out
-  DB.status.forEach(s=>{ if(s.type==='idt') s.type='idt_out'; });
+  db.status.forEach(s=>{ if(s.type==='idt') s.type='idt_out'; });
+  return db;
+}
+
+let wired = false;
+function wireOnce(){
+  if(wired) return;
+  wired = true;
   wire();
   initMonthPickers();
   updateStatusHelper();
-  renderAll();
-  applyTabHash();                      // honour index.html#checkin and friends
+}
+
+// Paint from the cached copy immediately, then reconcile with the database.
+// Waiting for Supabase before drawing anything made every visit to the register
+// -- including coming back from the session console -- sit on a blank page for a
+// network round trip, which is most of what "going back is slow" was.
+async function bootApp(){
+  hideLogin();
+  const cached = cachedDB();
+  dbReady = remoteDB();                // starts now; deliberately not awaited yet
+
+  if(cached){
+    DB = normaliseDB(cached);
+    setSyncStatus('Showing your saved copy — checking the database…');
+    wireOnce();
+    renderAll();
+    applyTabHash();                    // honour index.html#checkin and friends
+  }
+
+  const remote = await dbReady;
+  if(remote && !dbDirty){
+    // Re-render only when the database actually differs, so a refresh never
+    // interrupts something being typed. If the organiser has already changed
+    // something, their copy stands and saveDB() will push it.
+    const differs = !cached || JSON.stringify(remote) !== JSON.stringify(cached);
+    DB = normaliseDB(remote);
+    wireOnce();
+    if(differs){ renderAll(); applyTabHash(); }
+  } else if(remote){
+    wireOnce();
+  } else if(!cached){
+    DB = normaliseDB(seedData());
+    wireOnce();
+    renderAll();
+    applyTabHash();
+    await saveDB();
+  }
 }
 
 // Deferred scripts finish before DOMContentLoaded, so supabase-js is guaranteed

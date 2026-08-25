@@ -65,7 +65,7 @@
 
 <main>
   <nav class="backbar no-print" aria-label="Back">
-    <a class="btn ghost sm" href="index.html#checkin">&larr; Back to Check-in / QR</a>
+    <a class="btn ghost sm" href="index.html#checkin" data-back>&larr; Back to Check-in / QR</a>
     <a class="btn ghost sm" href="index.html#dash">Register home</a>
   </nav>
 
@@ -150,7 +150,7 @@
     </div>
 
     <nav class="backbar no-print" style="margin:16px 0 0" aria-label="Back">
-      <a class="btn ghost sm" href="index.html#checkin">&larr; Back to Check-in / QR</a>
+      <a class="btn ghost sm" href="index.html#checkin" data-back>&larr; Back to Check-in / QR</a>
     </nav>
   </div>
 </main>
@@ -566,6 +566,29 @@ function downloadCsv() {
 // NOT run while this inline script is being parsed. Waiting for DOMContentLoaded
 // is what makes that safe -- deferred scripts always finish before it fires.
 // (Calling boot() directly here left the page stuck on "Loading the session…".)
+/* "Back to Check-in / QR": if we arrived here from the register in this tab, a
+   real history back restores it from the browser's cache -- instantly, on the
+   tab you were on, scrolled where you left it. Re-navigating by URL instead
+   re-downloads and re-boots the whole register, which is what made going back
+   feel slow. The href stays a genuine link so long-press, middle-click and
+   open-in-new-tab all still behave. */
+const cameFromRegister = (() => {
+  try {
+    const r = new URL(document.referrer);
+    return r.origin === location.origin && /(^|\/)index\.html$/.test(r.pathname);
+  } catch (e) { return false; }
+})();
+
+function wireBackLinks() {
+  document.querySelectorAll('a[data-back]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (cameFromRegister && history.length > 1) { e.preventDefault(); history.back(); }
+    });
+  });
+}
+wireBackLinks();
+
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot, { once: true });
 else boot();
 </script>
