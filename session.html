@@ -38,6 +38,12 @@
   .qr-box h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-deep);margin-bottom:10px}
   .qr-box .qr{display:inline-block;padding:10px;background:#fff;border:1px solid var(--line);border-radius:10px}
   .qr-box .url{font-size:11.5px;color:var(--muted);word-break:break-all;margin:10px 0 8px}
+  .qr-box .qr-actions{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}
+  .iconbtn{appearance:none;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:8px;
+    color:var(--muted);padding:7px 10px;display:inline-flex;align-items:center;justify-content:center;
+    transition:.15s;flex-shrink:0}
+  .iconbtn:hover{border-color:var(--moss);color:var(--moss-deep)}
+  .iconbtn.ok{border-color:var(--moss);color:var(--moss);background:#eef3ee}
   .stat-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:18px}
   .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
   .stat .n{font-family:Georgia,serif;font-size:26px;font-weight:700;color:var(--moss-deep);line-height:1}
@@ -134,13 +140,20 @@
           <h3>Sign in — show this on the day</h3>
           <div class="qr" id="qrCheckin"></div>
           <div class="url" id="urlCheckin"></div>
-          <button class="btn ghost sm" data-copy="checkin">Copy link</button>
+          <div class="qr-actions">
+            <a class="btn ghost sm" id="openCheckin" href="#" target="_blank" rel="noopener">Open page</a>
+            <button class="iconbtn" data-copy="checkin" title="Copy the sign-in link" aria-label="Copy the sign-in link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          </div>
         </div>
         <div class="qr-box">
           <h3>Feedback — share at the end</h3>
           <div class="qr" id="qrFeedback"></div>
           <div class="url" id="urlFeedback"></div>
-          <button class="btn ghost sm" data-copy="feedback">Copy link</button>
+          <div class="qr-actions">
+            <a class="btn ghost sm" id="openFeedback" href="#" target="_blank" rel="noopener">Open form</a>
+            <button class="iconbtn" data-copy="feedback" title="Copy the feedback link" aria-label="Copy the feedback link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <a class="btn ghost sm" id="editForm" href="#">Edit form</a>
+          </div>
         </div>
       </div>
     </div>
@@ -164,7 +177,6 @@
         <button class="btn primary sm" id="pushAll">Email feedback link to everyone outstanding</button>
         <button class="btn ghost sm" id="pushSelected">Email selected only</button>
         <button class="btn ghost sm" id="previewCert">Preview certificate PDF</button>
-        <a class="btn ghost sm" id="editForm" href="#">Edit the feedback form</a>
         <button class="btn ghost sm" id="refresh">Refresh</button>
       </div>
       <p class="helper" id="emailWarning"></p>
@@ -268,6 +280,8 @@ async function open() {
   el('subtitle').textContent = ENT.fmtDate(session.session_date) + (session.location ? ' · ' + session.location : '');
 
   el('editForm').href = 'form-editor.html?s=' + encodeURIComponent(SESSION_ID);
+  el('openCheckin').href = checkinUrl();
+  el('openFeedback').href = feedbackUrl();
   drawQr('qrCheckin', checkinUrl());
   drawQr('qrFeedback', feedbackUrl());
   el('urlCheckin').textContent = checkinUrl();
@@ -275,9 +289,13 @@ async function open() {
   document.querySelectorAll('[data-copy]').forEach((b) => {
     b.onclick = async () => {
       const url = b.dataset.copy === 'checkin' ? checkinUrl() : feedbackUrl();
-      try { await navigator.clipboard.writeText(url); b.textContent = 'Copied'; }
-      catch (e) { b.textContent = 'Copy failed'; }
-      setTimeout(() => { b.textContent = 'Copy link'; }, 1600);
+      try {
+        await navigator.clipboard.writeText(url);
+        b.classList.add('ok');
+        setTimeout(() => b.classList.remove('ok'), 1400);
+      } catch (e) {
+        note('Could not copy — the link is shown above the button.', 'warn');
+      }
     };
   });
 
