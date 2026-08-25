@@ -123,23 +123,29 @@ without the logo.
 
 ## 3. Running a teaching day
 
+The *Check-in / QR* tab is laid out in the order the day runs: **On the day**
+holds the sign-in link, **After the session** opens **Feedback & certificates**
+— the console, where everything to do with the feedback form and certificates
+lives.
+
 1. **Publish the session.** Register → *Check-in / QR* → pick the teaching day →
    set the real date and location → **Publish this session**. The QR on that
-   tab now opens the live sign-in page. The session starts with a copy of the
-   feedback-form template; **Edit the feedback form** changes it for this day
-   only (see below).
+   tab now opens the live sign-in page, and the session starts with a copy of
+   the feedback-form template.
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
    and sign in. If we already hold their email (see below) they can leave that
    field blank; if not, they're asked to add one so their certificate can reach
-   them. Their attendance also lands in the register grid; **Pull sign-ins into
-   the register** re-syncs at any point, and also backfills any missing roster
-   emails from what people signed in with.
+   them. Their attendance also lands in the register grid; **Re-sync sign-ins**
+   repairs it at any point, and also backfills any missing roster emails from
+   what people signed in with. The icon beside **Open sign-in page** copies the
+   link, if you'd rather send it than show the QR.
 3. **At the end**, push the feedback form — right there on the *Check-in / QR*
-   tab, under **Feedback & certificates**: **Email feedback to all outstanding**
-   sends it to every checked-in trainee who hasn't given feedback yet, or tick
-   individuals and use **Email selected**. (The **Session console** does the
-   same, plus the full report, if you'd rather work from there. The *Copy
-   feedback link* / QR are there too if you want to share it another way.)
+   tab, under **Send the feedback form now**: **Email all outstanding** sends it
+   to every checked-in trainee who hasn't given feedback yet, or tick
+   individuals and use **Email selected**. **Feedback & certificates** does the
+   same and more: the feedback QR, an **Open form** link and a copy icon for
+   sharing it another way, **Edit form**, the full attendee list, certificate
+   controls and the anonymous report.
 4. **Certificates issue themselves.** Submitting feedback flips the gate and the
    certificate is emailed straight away. The attendee list shows who has given
    feedback and whose certificate has gone; the console can resend.
@@ -155,9 +161,9 @@ can edit, and the difference matters:
 - **The template.** *Check-in / QR* → **Edit the feedback form template** (or
   open `form-editor.html` directly). Every session published from now on starts
   from this. Sessions that already exist are not touched.
-- **One session's form.** *Check-in / QR* → pick the day → **Edit the feedback
-  form**, or the same button in the session console. Changes here affect that
-  session only. **Save as the template too** does both at once, and **Reset to
+- **One session's form.** *Check-in / QR* → pick the day → **Feedback &
+  certificates** → **Edit form**, beside the feedback QR. Changes here affect
+  that session only. **Save as the template too** does both at once, and **Reset to
   the template** throws the session's own copy away and goes back to inheriting.
 
 The editor works like a form builder: add a question, pick its type (rating 1–5,

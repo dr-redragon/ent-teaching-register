@@ -84,6 +84,16 @@
   .btn.clay{background:var(--clay);color:#fff}
   .btn.clay:hover{filter:brightness(.94)}
   .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:7px}
+  /* a link and its "copy the link" twin, sitting together as one control */
+  .linkgrp{display:flex;align-items:center;gap:6px}
+  .iconbtn{appearance:none;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:7px;
+    color:var(--muted);padding:6px 9px;display:inline-flex;align-items:center;justify-content:center;
+    transition:.15s;flex-shrink:0}
+  .iconbtn:hover{border-color:var(--moss);color:var(--moss-deep)}
+  .iconbtn.ok{border-color:var(--moss);color:var(--moss);background:#eef3ee}
+  .grouphead{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--muted);margin:16px 0 8px}
+  .grouphead:first-child{margin-top:0}
   input,select{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
   input:focus,select:focus{outline:2px solid var(--moss);outline-offset:-1px;border-color:var(--moss)}
   label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
@@ -1572,6 +1582,31 @@ async function sendChase(s){
   btn.disabled=false; btn.textContent='Send';
 }
 
+/* One "copy this link" control, used next to the links it belongs to rather
+   than as a separate button somewhere else in the panel. */
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" '+
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+
+  '<rect x="9" y="9" width="12" height="12" rx="2"/>'+
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+function copyLinkBtn(url, what){
+  const label = 'Copy the '+what;
+  return '<button type="button" class="iconbtn" data-copy-url="'+escHtml(url)+'" '+
+         'title="'+escHtml(label)+'" aria-label="'+escHtml(label)+'">'+COPY_ICON+'</button>';
+}
+
+function wireCopyButtons(container){
+  container.querySelectorAll('[data-copy-url]').forEach(b=>{
+    b.onclick=()=>{
+      navigator.clipboard?.writeText(b.dataset.copyUrl);
+      toast('Link copied');
+      b.classList.add('ok');
+      setTimeout(()=>b.classList.remove('ok'), 1300);
+    };
+  });
+}
+
 function renderCloudPanel(){
   const box = document.getElementById('cloudBody');
   if(!box) return;
@@ -1602,40 +1637,46 @@ function renderCloudPanel(){
     return;
   }
 
+  // Two groups in the order the day actually runs, rather than one undifferentiated
+  // row of links. Everything to do with the feedback form and certificates lives
+  // behind one door -- the console -- instead of being scattered here as well.
   box.innerHTML =
     `<div class="row-actions" style="margin-bottom:10px">
        <span class="badge active">Live</span>
        <span class="li-sub" id="cloudCounts">loading numbers…</span>
      </div>
-     <div class="pill-row" style="gap:8px">
-       <a class="btn ghost sm" href="${pageUrl('checkin.html',s.cloudId)}" target="_blank" rel="noopener">Open sign-in page</a>
-       <a class="btn ghost sm" href="${pageUrl('feedback.html',s.cloudId)}" target="_blank" rel="noopener">Open feedback form</a>
-       <a class="btn primary sm" href="${pageUrl('session.html',s.cloudId)}">Session console</a>
-     </div>
-     <div class="row-actions" style="margin-top:12px">
-       <button class="btn ghost sm" id="cloudCopyFeedback">Copy feedback link</button>
-       <a class="btn ghost sm" href="${pageUrl('form-editor.html',s.cloudId)}">Edit the feedback form</a>
+
+     <div class="grouphead">On the day</div>
+     <div class="row-actions">
+       <span class="linkgrp">
+         <a class="btn ghost sm" href="${pageUrl('checkin.html',s.cloudId)}" target="_blank" rel="noopener">Open sign-in page</a>
+         ${copyLinkBtn(pageUrl('checkin.html',s.cloudId), 'sign-in link')}
+       </span>
        <button class="btn ghost sm" id="cloudSync">Re-sync sign-ins</button>
      </div>
-     <p class="helper" id="cloudSyncMsg">Sign-ins land in the attendance grid by themselves. Re-sync is the repair
-       button: use it if someone signed in while offline, if you added them to the roster after they signed in, or to
-       pull in emails and grades people typed on the day.</p>
+     <p class="helper" id="cloudSyncMsg">This is the page the QR opens. Sign-ins reach the attendance grid on their
+       own — re-sync is the repair button: use it if someone signed in while offline, if you added them to the roster
+       after they signed in, or to pull in emails and grades people typed on the day.</p>
+
+     <div class="grouphead">After the session</div>
+     <div class="row-actions">
+       <a class="btn primary sm" href="${pageUrl('session.html',s.cloudId)}">Feedback &amp; certificates</a>
+     </div>
+     <p class="helper">Everything for afterwards in one place: share or edit the feedback form, see who has replied,
+       issue and resend certificates, and read the anonymous report.</p>
 
      <div class="att-head">
-       <label class="fld" style="margin:0">Feedback &amp; certificates</label>
+       <label class="fld" style="margin:0">Send the feedback form now</label>
        <div class="row-actions">
-         <button class="btn primary sm" id="fbPushAll">Email feedback to all outstanding</button>
+         <button class="btn primary sm" id="fbPushAll">Email all outstanding</button>
          <button class="btn ghost sm" id="fbPushSel">Email selected</button>
        </div>
      </div>
-     <p class="helper" style="margin-top:6px">Sends the feedback form to checked-in trainees by email. Completing it emails their certificate automatically. Those who&rsquo;ve already given feedback are skipped.</p>
+     <p class="helper" style="margin-top:6px">Emails the form to checked-in trainees. Completing it releases their certificate automatically. Anyone who has already given feedback is skipped.</p>
      <div id="fbResult"></div>
      <div class="att-list" id="cloudAttendees"><div class="empty" style="padding:16px">Loading attendees&hellip;</div></div>`;
 
-  document.getElementById('cloudCopyFeedback').onclick=()=>{
-    navigator.clipboard?.writeText(pageUrl('feedback.html',s.cloudId));
-    toast('Feedback link copied');
-  };
+  wireCopyButtons(box);
   document.getElementById('cloudSync').onclick=()=>syncCloudCheckins(s);
   document.getElementById('fbPushAll').onclick=()=>pushCloudFeedback(s,null);
   document.getElementById('fbPushSel').onclick=()=>pushCloudFeedback(s,cloudSelectedIds());
