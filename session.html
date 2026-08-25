@@ -30,6 +30,11 @@
     flex-wrap:wrap;align-items:center;flex-shrink:0}
   .cert-foot .spacer{flex:1}
   .cert-status{padding:26px 4px;text-align:center;color:var(--muted);font-size:14px}
+  .btn.danger{background:var(--clay);color:#fff;border-color:var(--clay)}
+  .btn.danger:hover{filter:brightness(.93)}
+  .btn.danger:disabled{background:#d9ac99;cursor:not-allowed}
+  .danger-card{border-color:#e0b09a}
+  .danger-card h2{color:#9c3d1c}
   .brand-link{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:8px}
   .brand-link:hover .mark{color:#fff}
   .brand-link:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
@@ -114,6 +119,30 @@
       Authentication → Users.</p>
   </div>
 
+  <!-- confirm wiping feedback -->
+  <div class="cert-back no-print" id="wipeModal" role="dialog" aria-label="Confirm deleting feedback">
+    <div class="cert-card" style="max-width:520px">
+      <div class="cert-head">
+        <h2 style="color:#9c3d1c">Delete all feedback?</h2>
+        <button class="btn ghost sm" id="wipeCancel">Cancel</button>
+      </div>
+      <div class="cert-body">
+        <div class="notice bad" style="margin:0 0 14px">
+          <strong id="wipeCount">This deletes every response for this session.</strong>
+          This cannot be undone.
+        </div>
+        <p class="helper" style="margin:0">The feedback report empties, and everyone who had answered
+          is asked again next time you push the form. Sign-ins, attendance and certificates already
+          sent are left alone.</p>
+        <div id="wipeResult"></div>
+      </div>
+      <div class="cert-foot">
+        <button class="btn danger sm" id="wipeConfirm">Yes, delete it all</button>
+        <button class="btn ghost sm" id="wipeCancel2">Keep the feedback</button>
+      </div>
+    </div>
+  </div>
+
   <!-- certificate preview -->
   <div class="cert-back no-print" id="certModal" role="dialog" aria-label="Certificate preview">
     <div class="cert-card">
@@ -194,6 +223,22 @@
         <button class="btn ghost sm" onclick="window.print()">Print / save as PDF</button>
         <button class="btn ghost sm" id="downloadCsv">Download responses (CSV)</button>
       </div>
+    </div>
+
+    <!-- danger zone -->
+    <div class="card no-print danger-card">
+      <h2>Delete feedback</h2>
+      <div class="notice warn" style="margin-bottom:14px">
+        <strong>This wipes every feedback response for this session.</strong> All of them, for
+        <strong id="wipeSessionName">this session</strong> — not just one person's, and there is no undo.
+        The report empties and everyone who has answered is asked again the next time you push the form.
+        Certificates already emailed stay sent, so nobody is sent a duplicate.
+      </div>
+      <div class="actions" style="margin-top:0">
+        <button class="btn danger sm" id="wipeFeedback">Delete all feedback for this session</button>
+      </div>
+      <p class="helper">Use this when a session was tested with dummy responses, or the form was wrong
+        and you want to collect it again from scratch. Attendance and sign-ins are not touched.</p>
     </div>
 
     <nav class="backbar no-print" style="margin:16px 0 0" aria-label="Back">
@@ -304,8 +349,14 @@ async function open() {
   el('pushSelected').onclick = () => pushFeedbackLink(selectedIds());
   el('previewCert').onclick = previewCertificate;
   el('certClose').onclick = closeCertModal;
+  el('wipeSessionName').textContent = session.title;
+  el('wipeFeedback').onclick = showWipeModal;
+  el('wipeCancel').onclick = hideWipeModal;
+  el('wipeCancel2').onclick = hideWipeModal;
+  el('wipeConfirm').onclick = wipeFeedback;
+  el('wipeModal').addEventListener('click', (e) => { if (e.target === el('wipeModal')) hideWipeModal(); });
   el('certModal').addEventListener('click', (e) => { if (e.target === el('certModal')) closeCertModal(); });
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCertModal(); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeCertModal(); hideWipeModal(); } });
   el('selectAll').onchange = () => {
     document.querySelectorAll('#attendeeTable tbody input[type=checkbox]')
       .forEach((c) => { c.checked = el('selectAll').checked; });
@@ -490,6 +541,36 @@ async function previewCertificate() {
     el('certBody').innerHTML = '<div class="notice bad" style="margin:0">' + ENT.esc(err.message) + '</div>';
   }
   btn.disabled = false; btn.textContent = label;
+}
+
+/* ------------------------------------------------------- deleting feedback */
+
+function showWipeModal() {
+  const n = responses.length;
+  el('wipeCount').textContent = n
+    ? `This deletes all ${n} response${n === 1 ? '' : 's'} for ${session.title}.`
+    : `There are no responses recorded for ${session.title} yet.`;
+  el('wipeResult').innerHTML = '';
+  const go = el('wipeConfirm');
+  go.disabled = !n;
+  go.textContent = n ? `Yes, delete ${n} response${n === 1 ? '' : 's'}` : 'Nothing to delete';
+  el('wipeModal').classList.add('show');
+}
+function hideWipeModal() { el('wipeModal').classList.remove('show'); }
+
+async function wipeFeedback() {
+  const go = el('wipeConfirm');
+  const label = go.textContent;
+  go.disabled = true; go.textContent = 'Deleting…';
+  try {
+    const res = await ENT.api('reset-feedback', { session_id: SESSION_ID, confirm: true }, authToken);
+    hideWipeModal();
+    note(`Deleted ${res.deleted} feedback response${res.deleted === 1 ? '' : 's'}. Everyone can give feedback again; certificates already sent are unchanged.`, 'info');
+    await loadAll();
+  } catch (err) {
+    el('wipeResult').innerHTML = `<div class="notice bad" style="margin-top:14px">${ENT.esc(err.message)}</div>`;
+    go.disabled = false; go.textContent = label;
+  }
 }
 
 /* ---------------------------------------------------------------- report */
