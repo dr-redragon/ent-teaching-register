@@ -24,7 +24,13 @@ label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--muted);marg
 input,select,textarea{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:9px;padding:11px 12px;width:100%}
 textarea{min-height:96px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--moss);outline-offset:-1px;border-color:var(--moss)}
-button.btn{appearance:none;cursor:pointer;font:inherit;font-weight:600;font-size:14.5px;border-radius:10px;padding:11px 18px;border:1px solid transparent;transition:.15s}
+/* Element-qualified as `button.btn` this matched only <button>, so every link
+   styled as a button -- the back bars, the console and form-editor links --
+   rendered as bare text with no border, no weight and a text-sized tap
+   target. Applies to anchors too now. */
+.btn{appearance:none;cursor:pointer;font:inherit;font-weight:600;font-size:14.5px;border-radius:10px;
+  padding:11px 18px;border:1px solid transparent;transition:.15s;text-decoration:none;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .btn.primary{background:var(--moss);color:#fff}
 .btn.primary:hover{background:var(--moss-deep)}
 .btn.primary:disabled{background:#a9bdae;cursor:not-allowed}
