@@ -2583,6 +2583,10 @@ function whenReady(fn){
 }
 
 whenReady(async function(){
+  if(typeof supabase==='undefined'){
+    showLogin('Could not load the sign-in library. Check your connection and reload.');
+    return;
+  }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){

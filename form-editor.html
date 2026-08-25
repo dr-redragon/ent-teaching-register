@@ -179,6 +179,9 @@ function fail(msg) { el('loading').innerHTML = `<div class="notice bad">${ENT.es
 
 /* ---------------------------------------------------------------- boot */
 async function boot() {
+  if (typeof supabase === 'undefined') {
+    return fail('Could not load the sign-in library. Check your connection and reload.');
+  }
   sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
   const { data: { session } } = await sb.auth.getSession();
   el('loading').style.display = 'none';
@@ -201,13 +204,30 @@ async function boot() {
   };
 }
 
+// Reading a form needs no privileged access: sessions.form and form_templates
+// are both select-able by a signed-in organiser, so this goes straight to
+// PostgREST -- two requests in parallel, both against an always-warm service.
+// Routing it through the Edge Function instead cost a CORS preflight, a cold
+// isolate boot and an internal auth round trip, which is what made this link
+// feel slow to open. Saving still goes through the Edge Function.
 async function load() {
   try {
-    const res = await ENT.api('get-form', SESSION_ID ? { session_id: SESSION_ID } : {}, authToken);
-    templateForm = res.template || { title: 'Session feedback', questions: [] };
-    sessionMeta = res.session || null;
-    inherited = res.source === 'template' && !!SESSION_ID;
-    form = deepCopy(scope === 'template' ? templateForm : res.form);
+    const [sessRows, tplRows] = await Promise.all([
+      SESSION_ID
+        ? ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,form', authToken)
+        : Promise.resolve([]),
+      ENT.rest('form_templates?id=eq.default&select=form', authToken),
+    ]);
+
+    templateForm = (tplRows[0] && tplRows[0].form) || { title: 'Session feedback', questions: [] };
+    const sess = sessRows[0];
+    if (SESSION_ID && !sess) return fail('That session no longer exists.');
+
+    sessionMeta = sess ? { id: sess.id, title: sess.title, session_date: sess.session_date } : null;
+    inherited = !!SESSION_ID && !sess.form;
+    const active = SESSION_ID ? (sess.form || templateForm) : templateForm;
+    form = deepCopy(scope === 'template' ? templateForm : active);
+
     el('editor').style.display = 'block';
     renderScope(); renderAll();
   } catch (err) { fail(err.message); }

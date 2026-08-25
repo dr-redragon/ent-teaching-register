@@ -48,10 +48,17 @@ window.ENT = (function () {
     return await res.json();
   }
 
-  // Plain PostgREST read for the anon-readable tables and views.
-  async function rest(path) {
+  // Plain PostgREST read for the anon-readable tables and views. Pass a signed-in
+  // organiser's access token to read as `authenticated` instead of `anon` --
+  // PostgREST applies the same RLS either way, and this avoids routing a plain
+  // read through the Edge Function, which costs a CORS preflight, an isolate
+  // boot and an internal auth round trip that PostgREST does not.
+  async function rest(path, accessToken) {
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + (accessToken || SUPABASE_ANON_KEY),
+      },
     });
     if (!res.ok) throw new Error('Could not load data (' + res.status + ')');
     return await res.json();
