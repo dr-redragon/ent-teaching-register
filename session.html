@@ -181,6 +181,9 @@ function note(msg, kind) {
 // register — no separate token to paste per browser. Signing in on one device
 // signs in on that device only, same as any normal login.
 async function boot() {
+  if (typeof supabase === 'undefined') {
+    return fail('Could not load the sign-in library. Check your connection and reload.');
+  }
   sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
   if (!SESSION_ID) return fail('No session in the link. Open this page from the register.');
   let rows;
@@ -559,7 +562,12 @@ function downloadCsv() {
   URL.revokeObjectURL(a.href);
 }
 
-boot();
+// supabase-js is deferred so it doesn't block first paint, which means it has
+// NOT run while this inline script is being parsed. Waiting for DOMContentLoaded
+// is what makes that safe -- deferred scripts always finish before it fires.
+// (Calling boot() directly here left the page stuck on "Loading the session…".)
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot, { once: true });
+else boot();
 </script>
 </body>
 </html>
