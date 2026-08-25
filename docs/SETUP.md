@@ -181,6 +181,34 @@ delete still shows its results on the sessions that asked it.
 None of this touches anonymity: a form is a set of questions, not an answer.
 `feedback_responses` still holds no name, no email and no attendee id.
 
+### Marking someone present without the QR
+
+Ticking a trainee present on the attendance grid, or using the quick
+manual sign-in on the *Check-in / QR* tab, now reaches the live session the
+same way scanning the QR does. Without this they were invisible to the
+feedback form and could never be sent a certificate — only people who used
+the QR themselves ever showed up there. If they have no email on file the
+push still goes through; they appear on the feedback form and are counted,
+but nobody can be sent a certificate for them until an address is added.
+Un-ticking someone removes their live check-in the same way, without
+touching any feedback or certificate already recorded against them.
+
+This is best effort: if the push cannot reach Supabase (offline, a slow
+connection), the register still records it locally and says so — use
+**Re-sync sign-ins** on the *Check-in / QR* tab afterwards, which now also
+pushes anyone marked present here that never made it through, and reports
+by name anyone still missing an email once it has.
+
+### Deleting a session's feedback
+
+The session console has a **Delete feedback** section, marked in red, for
+wiping every response recorded for that session and reopening the gate so
+it can be collected again — for a session tested with dummy responses, or a
+feedback form that needs redoing from scratch. It asks you to confirm, and
+states how many responses will be deleted, before anything happens. It does
+not touch sign-ins, attendance, or certificates already sent — those stay
+sent, so nobody receives a duplicate once feedback is collected again.
+
 ### Chasing an unexplained absence
 
 *Check-in / QR* → pick the teaching day → **Unexplained absences**. It lists

@@ -65,6 +65,16 @@ async function certificateBuilder() {
   return mod.buildCertificatePdf;
 }
 
+// A trainee the organiser marked present but for whom the register holds no
+// address still needs an attendee row, or they cannot appear on the feedback
+// form or be counted. attendees.email is NOT NULL and unique per session, so
+// they get a deliberately undeliverable placeholder, recognised again wherever
+// we would otherwise try to send to it.
+const NO_EMAIL_DOMAIN = "@no-email.invalid";
+const placeholderEmail = (key: string) =>
+  `t${String(key).replace(/[^a-zA-Z0-9]/g, "").slice(0, 40) || "unknown"}${NO_EMAIL_DOMAIN}`;
+const isPlaceholderEmail = (v: string) => String(v ?? "").toLowerCase().endsWith(NO_EMAIL_DOMAIN);
+
 function feedbackUrl(sessionId: string) {
   return `${APP_BASE_URL}/feedback.html?s=${encodeURIComponent(sessionId)}`;
 }
@@ -200,6 +210,7 @@ interface CertificateTarget {
 // double-send. Returns a short status string for the caller to report.
 async function issueCertificate(db: SupabaseClient, attendee: CertificateTarget, force = false): Promise<string> {
   if (!attendee.checked_in) return "skipped_not_checked_in";
+  if (isPlaceholderEmail(attendee.email)) return "skipped_no_email";
   if (attendee.certificate_sent_at && !force) return "already_sent";
 
   const { data: session } = await db
@@ -436,16 +447,24 @@ async function handleEmailFeedbackLink(db: SupabaseClient, body: Record<string, 
     .not("checked_in_at", "is", null)
     .eq("feedback_completed", false);
   if (ids.length) q = q.in("id", ids);
-  const { data: targets, error } = await q;
+  const { data: all, error } = await q;
   if (error) return json({ error: error.message }, 500);
+
+  // Anyone marked present without an address on file cannot be emailed. Say so
+  // by name rather than reporting a bare failure.
+  const targets = (all ?? []).filter((t) => !isPlaceholderEmail(t.email));
+  const unreachable = (all ?? []).filter((t) => isPlaceholderEmail(t.email));
 
   const url = feedbackUrl(sessionId);
   const dateLabel = new Date(session.session_date + "T00:00:00Z")
     .toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
   let sent = 0;
-  const failures: { name: string; email: string; why: string }[] = [];
-  for (const t of targets ?? []) {
+  const failures: { name: string; email: string; why: string }[] = unreachable.map((t) => ({
+    name: t.name, email: "",
+    why: "No email on file — add one on the Trainees & sessions tab, then push again.",
+  }));
+  for (const t of targets) {
     const res = await sendEmail({
       to: t.email,
       subject: `Feedback for ${session.title} - and your certificate`,
@@ -463,9 +482,88 @@ async function handleEmailFeedbackLink(db: SupabaseClient, body: Record<string, 
     else failures.push({ name: t.name, email: t.email, why: explainFailure(res.reason) });
   }
   return json({
-    ok: true, sent, considered: targets?.length ?? 0, failures,
+    ok: true, sent, considered: (all ?? []).length, failures,
     sandbox: usingSandboxSender(), from: fromEmail(),
   });
+}
+
+// The organiser ticking someone present in the register is as much a check-in as
+// that trainee scanning the QR: without a row here they never appear on the
+// feedback form's name list, are never counted, and can never be issued a
+// certificate. This is how a manual mark-present reaches Supabase.
+async function handleMarkAttended(db: SupabaseClient, body: Record<string, unknown>) {
+  const sessionId = cleanText(body.session_id, 64);
+  const checkedIn = body.checked_in !== false;          // default: mark present
+  const list = Array.isArray(body.trainees) ? body.trainees : [];
+  if (!sessionId) return json({ error: "Missing session" }, 400);
+  if (!list.length) return json({ ok: true, marked: 0, no_email: [] });
+
+  const { data: session } = await db.from("sessions").select("id").eq("id", sessionId).maybeSingle();
+  if (!session) return json({ error: "Unknown session" }, 404);
+
+  let marked = 0;
+  const noEmail: string[] = [];
+
+  for (const raw of list) {
+    const item = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {};
+    const name = cleanText(item.name, 120);
+    const localId = cleanText(item.local_trainee_id, 64) || null;
+    const grade = cleanText(item.grade, 40) || null;
+    if (!name) continue;
+
+    let email = cleanEmail(item.email);
+    if (!isEmail(email) && localId) {
+      try {
+        const { data: resolved } = await db.rpc("resolve_trainee_email", { p_trainee_id: localId, p_email: null });
+        if (typeof resolved === "string" && resolved) email = cleanEmail(resolved);
+      } catch (err) { console.error("resolve_trainee_email failed", err); }
+    }
+    if (!isEmail(email)) { email = placeholderEmail(localId || name); noEmail.push(name); }
+
+    if (!checkedIn) {
+      // Un-ticking someone clears their check-in rather than deleting the row,
+      // so any feedback or certificate already recorded against them survives.
+      // The anon read policy hides rows with no checked_in_at, so they drop off
+      // the feedback form's list.
+      await db.from("attendees").update({ checked_in_at: null })
+        .eq("session_id", sessionId).eq("email", email);
+      marked++;
+      continue;
+    }
+
+    const { error } = await db.from("attendees").upsert(
+      { session_id: sessionId, name, email, grade, checked_in_at: new Date().toISOString() },
+      { onConflict: "session_id,email" },
+    );
+    if (error) { console.error("mark-attended failed", error); continue; }
+    marked++;
+  }
+
+  return json({ ok: true, marked, no_email: noEmail });
+}
+
+// Wipes every feedback response for one session and reopens the gate so it can
+// be collected again. Deliberately does not clear certificate_sent_at: those
+// emails have already gone out, and re-opening them would send duplicates.
+async function handleResetFeedback(db: SupabaseClient, body: Record<string, unknown>) {
+  const sessionId = cleanText(body.session_id, 64);
+  if (!sessionId) return json({ error: "Missing session" }, 400);
+  if (body.confirm !== true) return json({ error: "This needs to be confirmed" }, 400);
+
+  const { data: session } = await db.from("sessions").select("id,title").eq("id", sessionId).maybeSingle();
+  if (!session) return json({ error: "Unknown session" }, 404);
+
+  const { count } = await db.from("feedback_responses")
+    .select("id", { count: "exact", head: true }).eq("session_id", sessionId);
+
+  const { error: delErr } = await db.from("feedback_responses").delete().eq("session_id", sessionId);
+  if (delErr) { console.error("reset-feedback delete failed", delErr); return json({ error: delErr.message }, 500); }
+
+  const { error: gateErr } = await db.from("attendees")
+    .update({ feedback_completed: false }).eq("session_id", sessionId);
+  if (gateErr) { console.error("reset-feedback gate failed", gateErr); return json({ error: gateErr.message }, 500); }
+
+  return json({ ok: true, deleted: count ?? 0, session: session.title });
 }
 
 // Chases the people the register shows as absent without an excuse. The
@@ -544,7 +642,7 @@ async function handleCertificatePreview(db: SupabaseClient, body: Record<string,
 
 const ORGANISER_ACTIONS = new Set([
   "create-session", "session-status", "send-certificate", "email-feedback-link", "certificate-preview",
-  "chase-absences", "get-form", "save-form",
+  "chase-absences", "get-form", "save-form", "mark-attended", "reset-feedback",
 ]);
 
 Deno.serve(async (req) => {
@@ -576,6 +674,8 @@ Deno.serve(async (req) => {
       case "chase-absences":      return await handleChaseAbsences(db, body);
       case "get-form":            return await handleGetForm(db, body);
       case "save-form":           return await handleSaveForm(db, body);
+      case "mark-attended":       return await handleMarkAttended(db, body);
+      case "reset-feedback":      return await handleResetFeedback(db, body);
       default:                    return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {
