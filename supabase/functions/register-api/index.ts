@@ -9,13 +9,17 @@
 // identifier is never written to feedback_responses, and nothing in this file
 // ever reads feedback rows back alongside a name or email.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4?target=deno";
-import { buildCertificatePdf } from "./certificate.ts";
 import { emailConfigured, explainFailure, fromEmail, replyToAddresses, sendEmail, usingSandboxSender } from "./email.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  // Without this the browser re-runs the CORS preflight before EVERY call, and
+  // each preflight is a full round trip to a cold isolate -- measured at
+  // 180-1260ms, i.e. it was roughly doubling the cost of every organiser action.
+  // A day is the most browsers will honour (Chrome caps it at 2 hours anyway).
+  "Access-Control-Max-Age": "86400",
 };
 
 const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") || "https://dr-redragon.github.io/ent-teaching-register").replace(/\/+$/, "");
@@ -27,8 +31,9 @@ function json(body: unknown, status = 200) {
   });
 }
 
+let _service: SupabaseClient | null = null;
 function service(): SupabaseClient {
-  return createClient(
+  return _service ??= createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     { auth: { persistSession: false } },
@@ -52,6 +57,13 @@ const cleanEmail = (v: unknown) => String(v ?? "").trim().toLowerCase();
 const cleanText = (v: unknown, max = 300) => String(v ?? "").trim().slice(0, max);
 const esc = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+
+// pdf-lib is ~1MB of JavaScript and only the two certificate actions touch it,
+// so it is imported on first use rather than at boot.
+async function certificateBuilder() {
+  const mod = await import("./certificate.ts");
+  return mod.buildCertificatePdf;
+}
 
 function feedbackUrl(sessionId: string) {
   return `${APP_BASE_URL}/feedback.html?s=${encodeURIComponent(sessionId)}`;
@@ -201,6 +213,7 @@ async function issueCertificate(db: SupabaseClient, attendee: CertificateTarget,
 
   let pdf: Uint8Array;
   try {
+    const buildCertificatePdf = await certificateBuilder();
     pdf = await buildCertificatePdf({
       name: attendee.name,
       sessionTitle: session.title,
@@ -517,6 +530,7 @@ async function handleCertificatePreview(db: SupabaseClient, body: Record<string,
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = new Date().toISOString().slice(0, 10);
 
+  const buildCertificatePdf = await certificateBuilder();
   const pdf = await buildCertificatePdf({
     name, sessionTitle: title, sessionDate: date, location,
     reference: "PREVIEW", logoUrl: Deno.env.get("CERT_LOGO_URL") || null,
