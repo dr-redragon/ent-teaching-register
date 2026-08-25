@@ -1195,9 +1195,12 @@ function openCellPop(dot){
   pop.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
     if(b.dataset.act==='close') return closeCellPop();
     const k=attKey(popOpenFor.t,popOpenFor.s);
+    const where=popOpenFor;
+    const nowPresent = !DB.attendance[k];
     if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
     closeCellPop();
     await saveDB(); renderAll();
+    pushAttendance(findSession(where.s), [where.t], nowPresent);
   });
 
   // added on the next frame so the tap that opened this doesn't close it
@@ -1351,8 +1354,10 @@ function wireDashTables(){
     if(lastPointerTouch){ openCellPop(d); return; }
     if(!d.classList.contains('na')){
       const k=attKey(d.dataset.t,d.dataset.s);
+      const nowPresent = !DB.attendance[k];
       if(DB.attendance[k]) delete DB.attendance[k]; else DB.attendance[k]={grade:''};
       await saveDB(); renderAll();
+      pushAttendance(findSession(d.dataset.s), [d.dataset.t], nowPresent);
     }
   });
   attachCellTip(cont);
@@ -1481,6 +1486,32 @@ async function callApi(action, payload){
   const data = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(data.error || ('Request failed ('+res.status+')'));
   return data;
+}
+
+/* Marking someone present in the register is as much a check-in as that trainee
+   scanning the QR, so it has to reach Supabase too. Without a row there they
+   never appear on the feedback form's name list and can never be sent a
+   certificate -- which is why only the people who used the QR could give
+   feedback. Best effort: the register is still the record, and "Re-sync
+   sign-ins" repairs anything that did not get through. */
+async function pushAttendance(sess, traineeIds, checkedIn){
+  if(!sess || !sess.cloudId || !traineeIds.length) return null;
+  const trainees = traineeIds.map(id=>{
+    const t=findTrainee(id); if(!t) return null;
+    return {
+      local_trainee_id: t.id,
+      name: t.name,
+      email: (t.email||'').trim(),
+      grade: gradeAt(t.id, sess.id) || (t.grade||''),
+    };
+  }).filter(Boolean);
+  if(!trainees.length) return null;
+  try{
+    return await callApi('mark-attended',{session_id:sess.cloudId, trainees, checked_in:checkedIn!==false});
+  }catch(err){
+    toast('Saved here, but the live sign-in list could not be reached — use Re-sync sign-ins');
+    return null;
+  }
 }
 
 function pageUrl(file, cloudId){
@@ -1866,8 +1897,13 @@ async function loadCloudCounts(s){
 // Cloud sign-ins are matched to the register by name. Anyone who typed a name
 // that is not on the roster is reported rather than guessed at.
 async function syncCloudCheckins(s){
-  setCloudSyncMsg('Pulling sign-ins…');
+  setCloudSyncMsg('Syncing sign-ins…');
   try{
+    // Push first: anyone the register has marked present but who never reached
+    // the live list -- including everyone marked before this was wired up --
+    // so they show on the feedback form and can be sent a certificate.
+    const presentHere = DB.trainees.filter(t=>isPresent(t.id, s.id)).map(t=>t.id);
+    const pushed = await pushAttendance(s, presentHere, true);
     const res=await callApi('session-status',{session_id:s.cloudId});
     const byName=new Map(DB.trainees.map(t=>[t.name.trim().toLowerCase(), t]));
     let added=0, emailed=0; const unmatched=[];
@@ -1884,8 +1920,11 @@ async function syncCloudCheckins(s){
     });
     const regraded = refreshGrades();
     if(added||emailed||regraded) await saveDB();
+    const noEmail = (pushed && pushed.no_email) || [];
     const summary = `${added} new sign-in${added===1?'':'s'} added to the register.` +
+      (pushed && pushed.marked? ` ${pushed.marked} marked present here ${pushed.marked===1?'is':'are'} now on the live list too.` : '') +
       (emailed? ` ${emailed} email${emailed===1?'':'s'} added to the roster.` : '') +
+      (noEmail.length? ` No email on file, so no certificate can reach them: ${noEmail.join(', ')}.` : '') +
       (unmatched.length? ` Not on the roster, so skipped: ${unmatched.join(', ')}.` : '');
     renderAll();                       // re-renders this panel, so report afterwards
     setCloudSyncMsg(summary);
@@ -2209,7 +2248,10 @@ function wire(){
     const t=document.getElementById('ciTrainee').value;
     const g=document.getElementById('ciGrade').value;
     if(!t||!activeSession)return toast('Pick a session and trainee');
-    DB.attendance[attKey(t,activeSession)]={grade:g}; refreshGrades(); await saveDB(); renderAll(); toast(findTrainee(t).name+' marked present');
+    const sess=findSession(activeSession);
+    DB.attendance[attKey(t,activeSession)]={grade:g}; refreshGrades(); await saveDB(); renderAll();
+    toast(findTrainee(t).name+' marked present');
+    pushAttendance(sess, [t], true);
   };
   document.getElementById('copyLink').onclick=()=>{
     const url=document.getElementById('qrcode').dataset.url||'';
