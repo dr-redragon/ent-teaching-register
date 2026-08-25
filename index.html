@@ -511,12 +511,18 @@
     <div class="grid2" style="align-items:start">
       <div class="card pad">
         <label class="fld">Add trainee</label>
-        <div class="inline-form" style="grid-template-columns:1.2fr 1.3fr auto">
+        <div class="inline-form" style="grid-template-columns:1.2fr .7fr 1.2fr auto">
           <div><input id="trName" placeholder="Full name"></div>
+          <div><select id="trGrade">
+            <option value="">Grade…</option>
+            <option>ST3</option><option>ST4</option><option>ST5</option>
+            <option>ST6</option><option>ST7</option><option>ST8</option>
+            <option>Fellow</option><option>SAS</option><option>Other</option>
+          </select></div>
           <div><input id="trEmail" type="email" placeholder="Email (optional)"></div>
           <div><button class="btn primary" id="trAdd">Add</button></div>
         </div>
-        <p class="helper">Grade is captured each time a trainee checks in, since it changes between rotations. Email is used to send certificates — trainees without one are asked to add it when they next sign in.</p>
+        <p class="helper">Grade keeps itself up to date: whatever a trainee picks at their next sign-in replaces what is held here, since it changes between rotations. Set it by hand for anyone who has not signed in yet, or use <strong>Edit</strong> on their row to correct a name, grade or email. Email is used to send certificates — trainees without one are asked to add it when they next sign in.</p>
         <div id="trList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
         <button type="button" class="former-toggle" id="formerToggle">
           <span id="formerToggleLabel">Former trainees</span>
@@ -631,6 +637,37 @@
   <span id="syncStatus">Connecting to database…</span>
 </div>
 <div class="toast" id="toast"></div>
+<!-- ===== EDIT TRAINEE ===== -->
+<div class="modal-back" id="trEditModal">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-head">
+      <h3>Edit trainee</h3>
+      <button class="btn ghost sm" onclick="hideTraineeEdit()">Close</button>
+    </div>
+    <div class="modal-body">
+      <div id="trEditError"></div>
+      <div class="field">
+        <label class="fld" for="trEditName">Name</label>
+        <input id="trEditName" maxlength="120">
+      </div>
+      <div class="field">
+        <label class="fld" for="trEditGrade">Grade</label>
+        <select id="trEditGrade"></select>
+        <p class="helper" id="trEditGradeNote"></p>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label class="fld" for="trEditEmail">Email</label>
+        <input id="trEditEmail" type="email" placeholder="none on file">
+        <p class="helper">Where their certificate is sent. Never shown to other trainees.</p>
+      </div>
+    </div>
+    <div style="padding:14px 26px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn ghost" onclick="hideTraineeEdit()">Cancel</button>
+      <button class="btn primary" id="trEditSave">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== CHASE ABSENCES ===== -->
 <div class="modal-back" id="chaseModal">
   <div class="modal-card">
@@ -926,11 +963,53 @@ function findSession(id){ return DB.sessions.find(s=>s.id===id); }
 function attKey(t,s){ return t+'|'+s; }
 function isPresent(t,s){ return !!DB.attendance[attKey(t,s)]; }
 function gradeAt(t,s){ const v=DB.attendance[attKey(t,s)]; return (v&&typeof v==='object'&&v.grade)?v.grade:''; }
+
+const GRADES = ['ST3','ST4','ST5','ST6','ST7','ST8','Fellow','SAS','Other'];
+
+// The most recent month this trainee has a grade recorded against, from any
+// sign-in. '' if they have never signed in with one.
+function latestGradedMonth(traineeId){
+  const all=sessionsSorted();
+  for(let i=all.length-1;i>=0;i--){ if(gradeAt(traineeId,all[i].id)) return all[i].month; }
+  return '';
+}
+
+// A trainee's grade follows whatever they last put on the sign-in form. The
+// newest session they have a grade recorded for wins, and t.gradeFrom remembers
+// which month that was, so a grade set by hand sticks until a LATER sign-in
+// supersedes it. Returns true if anything changed, so the caller can save.
+function refreshGrades(){
+  const all=sessionsSorted();
+  let changed=false;
+  DB.trainees.forEach(t=>{
+    let grade='', month='';
+    for(let i=all.length-1;i>=0;i--){
+      const g=gradeAt(t.id,all[i].id);
+      if(g){ grade=g; month=all[i].month; break; }
+    }
+    if(!grade) return;
+    if(month > (t.gradeFrom||'') && (t.grade!==grade || t.gradeFrom!==month)){
+      t.grade=grade; t.gradeFrom=month; changed=true;
+    }
+  });
+  return changed;
+}
 function latestGrade(traineeId, scope){
   // most recent session (by month) the trainee attended with a recorded grade.
   // With a scope (e.g. one academic year) the grade is read from that year first,
   // then from any earlier session, so a past year never shows a future grade.
   const all=sessionsSorted();
+
+  // For any view that reaches the present, the grade held on the trainee is the
+  // answer: it tracks their newest sign-in, and it is what an organiser edits by
+  // hand. A past academic year still reads its grade out of that year's
+  // attendance, so it is never relabelled with a grade they did not hold then.
+  const t=findTrainee(traineeId);
+  const stored=(t&&(t.grade||'').trim())||'';
+  const reachesNow = !scope || !all.length ||
+    (scope.length && scope[scope.length-1].month >= all[all.length-1].month);
+  if(stored && reachesNow) return stored;
+
   const list=scope||all;
   for(let i=list.length-1;i>=0;i--){ const g=gradeAt(traineeId,list[i].id); if(g) return g; }
   if(scope&&scope.length){
@@ -1797,11 +1876,14 @@ async function syncCloudCheckins(s){
       if(!t){ unmatched.push(a.name); return; }
       const key=attKey(t.id,s.id);
       if(!DB.attendance[key]){ DB.attendance[key]={grade:a.grade||''}; added++; }
-      else if(a.grade && !DB.attendance[key].grade){ DB.attendance[key].grade=a.grade; }
+      // What they put on the form is the trainee's own statement of their grade,
+      // so a corrected re-sign-in replaces what we held rather than being ignored.
+      else if(a.grade && DB.attendance[key].grade!==a.grade){ DB.attendance[key].grade=a.grade; }
       // backfill a missing roster email from what they signed in with
       if(a.email && !(t.email||'').trim()){ t.email=a.email; emailed++; }
     });
-    if(added||emailed) await saveDB();
+    const regraded = refreshGrades();
+    if(added||emailed||regraded) await saveDB();
     const summary = `${added} new sign-in${added===1?'':'s'} added to the register.` +
       (emailed? ` ${emailed} email${emailed===1?'':'s'} added to the roster.` : '') +
       (unmatched.length? ` Not on the roster, so skipped: ${unmatched.join(', ')}.` : '');
@@ -1967,21 +2049,68 @@ function traineeItemHtml(t){
   return `<div class="list-item">
     <div><div><span class="li-main">${escHtml(t.name)}</span> <span class="grade-tag">${escHtml(latestGrade(t.id))}</span>${badge}</div>${emailLine}</div>
     <div class="row-actions">
-      <span class="kebab" data-editem="${t.id}">Email</span>
+      <span class="kebab" data-edittr="${t.id}">Edit</span>
       <span class="kebab" data-deltr="${t.id}">✕</span>
     </div></div>`;
 }
+/* Editing a trainee: name, grade and email in one place, rather than the
+   email-only prompt this used to be. */
+let editingTraineeId=null;
+
+function showTraineeEdit(id){
+  const t=findTrainee(id); if(!t) return;
+  editingTraineeId=id;
+  document.getElementById('trEditName').value=t.name||'';
+  document.getElementById('trEditEmail').value=(t.email||'').trim();
+  document.getElementById('trEditError').innerHTML='';
+
+  const cur=(t.grade||'').trim() || latestGrade(id);
+  document.getElementById('trEditGrade').innerHTML =
+    '<option value="">Not set</option>' +
+    GRADES.map(g=>`<option${g===cur?' selected':''}>${g}</option>`).join('') +
+    (cur && !GRADES.includes(cur) ? `<option selected>${escHtml(cur)}</option>` : '');
+
+  const from=latestGradedMonth(id);
+  document.getElementById('trEditGradeNote').textContent = from
+    ? `Currently from their sign-in for ${fmtMonth(from)}. If you change it here it stays until they sign in again with a different grade.`
+    : 'They have not signed in with a grade yet. Whatever they pick at their next sign-in will replace this.';
+
+  document.getElementById('trEditModal').classList.add('show');
+  document.getElementById('trEditName').focus();
+}
+
+function hideTraineeEdit(){
+  document.getElementById('trEditModal').classList.remove('show');
+  editingTraineeId=null;
+}
+
+async function saveTraineeEdit(){
+  const t=findTrainee(editingTraineeId); if(!t) return hideTraineeEdit();
+  const name=document.getElementById('trEditName').value.trim();
+  const grade=document.getElementById('trEditGrade').value;
+  const email=document.getElementById('trEditEmail').value.trim();
+  const err=document.getElementById('trEditError');
+
+  if(!name) return err.innerHTML='<div class="notice bad">A trainee needs a name.</div>';
+  const clash=DB.trainees.find(o=>o.id!==t.id && o.name.trim().toLowerCase()===name.toLowerCase());
+  if(clash) return err.innerHTML='<div class="notice bad">Another trainee is already called that. Sign-ins are matched by name, so two the same cannot be told apart.</div>';
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return err.innerHTML='<div class="notice bad">That doesn’t look like a valid email.</div>';
+
+  t.name=name;
+  t.email=email;
+  if(grade!==((t.grade||'').trim() || latestGrade(t.id))){
+    t.grade=grade;
+    // Anchor the change to their newest sign-in so an older one cannot undo it,
+    // while a later sign-in still supersedes it.
+    t.gradeFrom=latestGradedMonth(t.id);
+  }
+  hideTraineeEdit();
+  await saveDB(); renderAll(); toast('Trainee updated');
+}
+
 function wireTraineeRowActions(container){
-  container.querySelectorAll('[data-editem]').forEach(b=>b.onclick=async()=>{
-    const t=findTrainee(b.dataset.editem); if(!t)return;
-    const cur=(t.email||'').trim();
-    const v=prompt(`Email for ${t.name}:`, cur);
-    if(v===null) return;                       // cancelled
-    const e=v.trim();
-    if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return toast('That doesn’t look like a valid email');
-    t.email = e;                               // '' clears it
-    await saveDB(); renderManage(); toast(e?'Email saved':'Email cleared');
-  });
+  container.querySelectorAll('[data-edittr]').forEach(b=>b.onclick=()=>showTraineeEdit(b.dataset.edittr));
   container.querySelectorAll('[data-deltr]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.deltr; const t=findTrainee(id);
     if(!confirm(`Remove ${t?t.name:'this trainee'}? This deletes their attendance, excuses and status. This can't be undone.`)) return;
@@ -2080,7 +2209,7 @@ function wire(){
     const t=document.getElementById('ciTrainee').value;
     const g=document.getElementById('ciGrade').value;
     if(!t||!activeSession)return toast('Pick a session and trainee');
-    DB.attendance[attKey(t,activeSession)]={grade:g}; await saveDB(); renderAll(); toast(findTrainee(t).name+' marked present');
+    DB.attendance[attKey(t,activeSession)]={grade:g}; refreshGrades(); await saveDB(); renderAll(); toast(findTrainee(t).name+' marked present');
   };
   document.getElementById('copyLink').onclick=()=>{
     const url=document.getElementById('qrcode').dataset.url||'';
@@ -2131,8 +2260,10 @@ function wire(){
     if(!n)return toast('Enter a name');
     const emEl=document.getElementById('trEmail'); const em=emEl.value.trim();
     if(em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return toast('That doesn’t look like a valid email');
-    DB.trainees.push({id:uid(),name:n,email:em||''});
+    const grEl=document.getElementById('trGrade');
+    DB.trainees.push({id:uid(),name:n,email:em||'',grade:grEl?grEl.value:'',gradeFrom:''});
     document.getElementById('trName').value=''; emEl.value='';
+    if(grEl) grEl.value='';
     await saveDB(); renderAll(); toast('Trainee added');
   };
   document.getElementById('seAdd').onclick=async()=>{
@@ -2144,6 +2275,10 @@ function wire(){
     await saveDB(); renderAll(); toast('Session added');
   };
 
+  document.getElementById('trEditSave').onclick=saveTraineeEdit;
+  document.getElementById('trEditModal').addEventListener('click',e=>{
+    if(e.target===document.getElementById('trEditModal')) hideTraineeEdit();
+  });
   document.getElementById('exportCsv').onclick=exportCsv;
   document.getElementById('reportBtn').onclick=showReportModal;
   wireReportModal();
@@ -2536,6 +2671,12 @@ function normaliseDB(db){
   return db;
 }
 
+// Grades are refreshed against the register as loaded, which also backfills
+// t.grade for data saved before trainees carried one.
+function refreshGradesAndSave(){
+  if(refreshGrades()) saveDB();
+}
+
 let wired = false;
 function wireOnce(){
   if(wired) return;
@@ -2556,6 +2697,7 @@ async function bootApp(){
 
   if(cached){
     DB = normaliseDB(cached);
+    refreshGrades();
     setSyncStatus('Showing your saved copy — checking the database…');
     wireOnce();
     renderAll();
@@ -2569,8 +2711,10 @@ async function bootApp(){
     // something, their copy stands and saveDB() will push it.
     const differs = !cached || JSON.stringify(remote) !== JSON.stringify(cached);
     DB = normaliseDB(remote);
+    const regraded = refreshGrades();
     wireOnce();
     if(differs){ renderAll(); applyTabHash(); }
+    if(regraded) saveDB();
   } else if(remote){
     wireOnce();
   } else if(!cached){
