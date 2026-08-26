@@ -30,6 +30,21 @@ separate "roles" concept — anyone with an account sees and can change
 everything in the register, same as before this existed, just no longer
 open to the world.
 
+### Forgotten passwords
+
+The sign-in screen has a **Forgot password?** link, so organisers no longer
+need you to reset it for them from the dashboard. It emails a link (via
+Supabase Auth, not the Resend setup below) that brings them back to this same
+page to choose a new password.
+
+For that link to work, add the page's own URL to **Supabase dashboard →
+Authentication → URL Configuration → Redirect URLs** (the same URL you gave
+users in step 3 above, e.g. `https://dr-redragon.github.io/ent-teaching-register/index.html`).
+Without it, Supabase silently drops the redirect and the emailed link sends
+people to whatever **Site URL** is set there instead. Supabase's own default
+email sending is fine for this — it's rate-limited but no `RESEND_API_KEY` or
+verified domain is needed, unlike the certificate/feedback emails below.
+
 ### Why this matters, precisely
 
 Before this, `register_store` (the table holding the entire register — every
@@ -335,7 +350,8 @@ the report or force the raw table open.
 | Emails only reach you | The Resend sandbox sender — `CERT_FROM_EMAIL` is unset or still `@resend.dev`. Verify a domain (§2). The Check-in tab and session console both flag this explicitly. |
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
-| Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — there's no self-service reset page here, so reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
+| Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
+| Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
 | A page sits on "Loading…" and never finishes | Reload once. If it persists, the Supabase library failed to load from the CDN — the page now says so explicitly rather than hanging. Check the connection, or whether a hospital network is blocking `cdn.jsdelivr.net`. |
 | Trainee sign-in / feedback page asks for a password | It shouldn't — those never touch login. If it does, you're looking at `index.html` itself rather than `checkin.html` / `feedback.html`; check the link or QR code being used. |
 

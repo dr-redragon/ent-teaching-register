@@ -336,8 +336,38 @@
     <input id="loginPassword" type="password" autocomplete="current-password">
   </div>
   <button class="btn primary" id="loginBtn" style="width:100%;padding:13px;font-size:15px">Sign in</button>
-  <p class="helper" style="margin-top:14px">No account yet? Ask whoever administers this register to add you under
+  <p class="helper" style="margin-top:10px;text-align:right"><a href="#" id="forgotLink">Forgot password?</a></p>
+  <p class="helper" style="margin-top:4px">No account yet? Ask whoever administers this register to add you under
     Supabase → Authentication → Users — there's no self-service sign-up.</p>
+</div>
+
+<!-- ===== FORGOT PASSWORD ===== -->
+<div class="kiosk-card card pad" id="forgotScreen" style="display:none">
+  <h2 class="panel-title" style="margin-bottom:2px">Reset your password</h2>
+  <p class="panel-lede" style="margin-bottom:18px">Enter the email your organiser account uses. If it matches an account, we'll send a link to set a new password.</p>
+  <div id="forgotMsg"></div>
+  <div class="field">
+    <label class="fld">Email</label>
+    <input id="forgotEmail" type="email" autocomplete="username" placeholder="you@example.com">
+  </div>
+  <button class="btn primary" id="forgotBtn" style="width:100%;padding:13px;font-size:15px">Send reset link</button>
+  <p class="helper" style="margin-top:14px"><a href="#" id="backToLoginLink">Back to sign in</a></p>
+</div>
+
+<!-- ===== SET NEW PASSWORD (arrived via emailed reset link) ===== -->
+<div class="kiosk-card card pad" id="resetScreen" style="display:none">
+  <h2 class="panel-title" style="margin-bottom:2px">Choose a new password</h2>
+  <p class="panel-lede" style="margin-bottom:18px">This resets the password for your organiser account.</p>
+  <div id="resetMsg"></div>
+  <div class="field">
+    <label class="fld">New password</label>
+    <input id="resetPassword" type="password" autocomplete="new-password">
+  </div>
+  <div class="field">
+    <label class="fld">Confirm password</label>
+    <input id="resetPassword2" type="password" autocomplete="new-password">
+  </div>
+  <button class="btn primary" id="resetBtn" style="width:100%;padding:13px;font-size:15px">Set new password</button>
 </div>
 
 <nav id="mainNav">
@@ -732,15 +762,37 @@ let sb = null;    // created at boot, once the deferred supabase-js has run
    two narrow RPCs below, and the kiosk view further down this file uses
    the same RPCs rather than loading the organiser's data at all.
    ============================================================ */
+function hideAuthScreens(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('forgotScreen').style.display='none';
+  document.getElementById('resetScreen').style.display='none';
+}
 function showLogin(message){
+  hideAuthScreens();
   document.getElementById('loginScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('loginError').innerHTML = message? `<div class="login-error">${escHtml(message)}</div>` : '';
 }
+function showForgot(){
+  hideAuthScreens();
+  document.getElementById('forgotScreen').style.display='block';
+  document.getElementById('mainNav').style.display='none';
+  document.getElementById('appMain').style.display='none';
+  document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('forgotMsg').innerHTML='';
+}
+function showReset(){
+  hideAuthScreens();
+  document.getElementById('resetScreen').style.display='block';
+  document.getElementById('mainNav').style.display='none';
+  document.getElementById('appMain').style.display='none';
+  document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('resetMsg').innerHTML='';
+}
 function hideLogin(){
-  document.getElementById('loginScreen').style.display='none';
+  hideAuthScreens();
   document.getElementById('mainNav').style.display='';
   document.getElementById('appMain').style.display='';
   document.getElementById('logoutBtn').style.display='inline-block';
@@ -760,6 +812,50 @@ function wireLogin(){
   document.getElementById('loginBtn').onclick=doLogin;
   document.getElementById('loginPassword').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
   document.getElementById('logoutBtn').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
+
+  document.getElementById('forgotLink').onclick=(e)=>{
+    e.preventDefault();
+    document.getElementById('forgotEmail').value=document.getElementById('loginEmail').value.trim();
+    showForgot();
+  };
+  document.getElementById('backToLoginLink').onclick=(e)=>{ e.preventDefault(); showLogin(); };
+
+  const doForgot=async()=>{
+    const email=document.getElementById('forgotEmail').value.trim();
+    const msgEl=document.getElementById('forgotMsg');
+    if(!email){ msgEl.innerHTML=`<div class="login-error">Enter your email address</div>`; return; }
+    const btn=document.getElementById('forgotBtn');
+    btn.disabled=true; btn.textContent='Sending…';
+    const redirectTo = location.origin + location.pathname;
+    const {error}=await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    btn.disabled=false; btn.textContent='Send reset link';
+    // Always show the same success message, whether or not the address has an
+    // account -- confirming which emails exist would leak who's registered.
+    if(error && error.status && error.status >= 500){
+      msgEl.innerHTML=`<div class="login-error">${escHtml(error.message)}</div>`;
+      return;
+    }
+    msgEl.innerHTML=`<div class="notice info">If that email has an account, a reset link is on its way. Check your inbox (and spam folder).</div>`;
+  };
+  document.getElementById('forgotBtn').onclick=doForgot;
+  document.getElementById('forgotEmail').addEventListener('keydown',e=>{ if(e.key==='Enter') doForgot(); });
+
+  const doReset=async()=>{
+    const pw=document.getElementById('resetPassword').value;
+    const pw2=document.getElementById('resetPassword2').value;
+    const msgEl=document.getElementById('resetMsg');
+    if(!pw||pw.length<6){ msgEl.innerHTML=`<div class="login-error">Password must be at least 6 characters</div>`; return; }
+    if(pw!==pw2){ msgEl.innerHTML=`<div class="login-error">Passwords don't match</div>`; return; }
+    const btn=document.getElementById('resetBtn');
+    btn.disabled=true; btn.textContent='Saving…';
+    const {error}=await sb.auth.updateUser({ password: pw });
+    btn.disabled=false; btn.textContent='Set new password';
+    if(error){ msgEl.innerHTML=`<div class="login-error">${escHtml(error.message)}</div>`; return; }
+    history.replaceState(null,'',location.pathname+location.search);
+    await bootApp();
+  };
+  document.getElementById('resetBtn').onclick=doReset;
+  document.getElementById('resetPassword2').addEventListener('keydown',e=>{ if(e.key==='Enter') doReset(); });
 }
 
 function setSyncStatus(msg, ok){
@@ -2822,13 +2918,20 @@ whenReady(async function(){
   }
 
   wireLogin();
-  const {data:{session}} = await sb.auth.getSession();
-  if(session){ await bootApp(); }
-  else { showLogin(); }
-
+  // A password-recovery link lands here with the recovery token in the URL;
+  // supabase-js exchanges it for a session and fires this event before the
+  // getSession() below runs, so check it first and show the reset form
+  // instead of booting straight into the app with a session the user hasn't
+  // chosen to be in.
+  let recovering=false;
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='SIGNED_OUT') showLogin();
+    if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(); }
+    else if(event==='SIGNED_OUT') showLogin();
   });
+  const {data:{session}} = await sb.auth.getSession();
+  if(recovering){ /* showReset() already called above */ }
+  else if(session){ await bootApp(); }
+  else { showLogin(); }
 });
 </script>
 </body>
