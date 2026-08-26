@@ -1078,10 +1078,27 @@ function computeRowForSessions(trainee, sessList){
 }
 function computeRow(trainee){ return computeRowForSessions(trainee, sessionsSorted()); }
 
-function activeStatusType(traineeId){
+function nowMonth(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+
+// The trainee's current long-term status, as of a given month (default: today).
+// mat/oop are LEAVE WINDOWS: once their end month is behind the reference month,
+// the trainee is back to Active -- the return from leave is automatic the moment
+// the date passes, with nothing to click. cct and idt_out are one-way departures
+// and idt_in a one-way arrival, so those keep showing regardless of date.
+//
+// The status row itself is never touched here or anywhere else on expiry -- it
+// stays on the Long-term status tab as the record of when the leave was, which
+// is the "memory" this is built to keep. Only the derived, point-in-time answer
+// to "what are they right now" changes.
+function activeStatusType(traineeId, atMonth){
   const rows = statusFor(traineeId).filter(s=>s.type!=='active');
   if(!rows.length) return null;
-  return rows[0]; // first non-active
+  const cutoff = atMonth || nowMonth();
+  for(const st of rows){
+    if((st.type==='mat'||st.type==='oop') && st.end && st.end < cutoff) continue; // leave has ended
+    return st;
+  }
+  return null;
 }
 
 /* ============================================================
@@ -1273,8 +1290,11 @@ function dashTableHtml(rows,sessList){
         : 'No trainees to show for this year.';
     body=`<tr><td colspan="6"><div class="empty">${msg}</div></td></tr>`;
   } else {
+    // Scoped to the year block being drawn, so a past year still shows the leave
+    // that genuinely applied then, rather than "Active" read back from today.
+    const cutoff = sessList.length? sessList[sessList.length-1].month : undefined;
     body=rows.map(r=>{
-      const stat = activeStatusType(r.trainee.id);
+      const stat = activeStatusType(r.trainee.id, cutoff);
       const badge = stat
         ? `<span class="badge ${stat.type}">${{cct:'CCT',mat:'Mat/Pat',oop:'OOP',idt_in:'IDT in',idt_out:'IDT out'}[stat.type]}${(stat.start||stat.end)?' · '+fmtMonth(stat.start||stat.end):''}</span>`
         : `<span class="badge active">Active</span>`;
@@ -2004,8 +2024,13 @@ function renderStatus(){
   list.innerHTML = items.length? items.map(s=>{
     const t=findTrainee(s.trainee); if(!t)return'';
     const lbl={cct:'CCT',mat:'Maternity/Paternity',oop:'Out of programme',idt_in:'Interdeanery transfer (IN)',idt_out:'Interdeanery transfer (OUT)'}[s.type];
+    // A mat/oop window whose end has passed is history, not a current state --
+    // the trainee already counts normally again, and this row is only being
+    // kept as the record of when their leave was.
+    const ended=(s.type==='mat'||s.type==='oop') && s.end && s.end<nowMonth();
+    const endedNote=ended? ` <span class="badge active">ended — counting normally again</span>`:'';
     return `<div class="list-item">
-      <div><div class="li-main">${t.name} <span class="badge ${s.type}">${lbl}</span></div>
+      <div><div class="li-main">${t.name} <span class="badge ${s.type}">${lbl}</span>${endedNote}</div>
       <div class="li-sub">${statusRangeText(s)}</div></div>
       <div class="row-actions">
         <span class="kebab" data-edit="${s.id}">Edit</span>
@@ -2059,8 +2084,8 @@ function updateStatusHelper(){
     cct:['—','CCT month','Sessions after the CCT month are excluded. Leave blank if not yet known.',false,true],
     idt_out:['Transfer-out month','—','Trainee leaves the deanery. Sessions from this month onward are excluded.',true,false],
     idt_in:['Arrival month','—','Trainee joins the deanery new. Sessions before this month are excluded; they count from this month on.',true,false],
-    mat:['Leave start (month)','Leave end (month)','Excluded during the leave window. No end = ongoing. No start = excluded up to the end month, then counts again (returning from leave).',true,true],
-    oop:['OOP start (month)','OOP end (month)','Out-of-programme months are excluded. No end = ongoing. No start = excluded up to the end month, then counts again (returning to programme).',true,true]
+    mat:['Leave start (month)','Leave end (month)','Excluded during the leave window. No end = ongoing. Once the end month passes, they automatically go back to Active and count normally again — nothing to change by hand — and this record stays here as the history of the leave.',true,true],
+    oop:['OOP start (month)','OOP end (month)','Out-of-programme months are excluded. No end = ongoing. Once the end month passes, they automatically go back to Active and count normally again — nothing to change by hand — and this record stays here as the history of the time out of programme.',true,true]
   };
   const [sl,el,desc,showStart,showEnd]=map[type];
   startLbl.textContent=sl; endLbl.textContent=el; h.textContent=desc;
@@ -2340,8 +2365,9 @@ function exportCsv(){
               'Attended','Eligible','Excused','AdjDenom','RawPct','AdjPct'];
   const lines=[head.map(csvCell).join(',')];
   const yearLabel = scoped || (ys.length? ys.join(' + ') : '—');
+  const csvCutoff = sess.length? sess[sess.length-1].month : undefined;
   DB.trainees.map(t=>computeRowForSessions(t,sess)).forEach(r=>{
-    const stat=activeStatusType(r.trainee.id);
+    const stat=activeStatusType(r.trainee.id, csvCutoff);
     const cells=r.cells.map(c=>{
       if(c.state==='present'){ const g=gradeAt(r.trainee.id,c.sess.id); return g?'P:'+g:'P'; }
       return {excused:'E',na:'NA',absent:'A'}[c.state];
@@ -2510,8 +2536,9 @@ function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,inc
       const cols=4+(showSessions?sec.sess.length:0)+(showRaw?1:0)+(showAdj?1:0);
       return `<tr><td colspan="${cols}" style="padding:20px;text-align:center;color:#7a7568">No trainees to show for this period.</td></tr>`;
     }
+    const repCutoff = sec.sess.length? sec.sess[sec.sess.length-1].month : undefined;
     return sec.rows.map((r,i)=>{
-      const stat=activeStatusType(r.trainee.id);
+      const stat=activeStatusType(r.trainee.id, repCutoff);
       const st=stat?stat.type:'active';
       const adj=r.adjPct===null?'—':r.adjPct+'%';
       const den=r.adjDenom>0?r.adjDenom:r.eligible;
