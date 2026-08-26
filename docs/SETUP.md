@@ -246,6 +246,27 @@ Past academic years are unaffected by any of this: the attendance grid reads
 each year's grade out of that year's sign-ins, so a trainee who was ST4 in
 2024/25 still shows ST4 there after they become ST5.
 
+### Long-term status (maternity/paternity, OOP, CCT, transfers)
+
+Set on the *Long-term status* tab, one entry per trainee: CCT, interdeanery
+transfer in/out, or a maternity/paternity or out-of-programme leave window
+with a start and (usually) an end month.
+
+Maternity/paternity and OOP are the two that come back: once the end month of
+the leave has passed, the trainee is automatically shown as Active again and
+counts normally in the attendance grid from that point on — nothing to change
+by hand, no toggle to flip back. The record of the leave itself is never
+deleted; it stays on the *Long-term status* tab, now marked **ended —
+counting normally again**, as the history of when it was. CCT and interdeanery
+transfers don't behave this way, since they aren't round trips — those keep
+showing until you remove or replace them.
+
+A past academic year is unaffected either way: the attendance dashboard,
+exports and printed reports show each year's status as it stood by the end of
+that year, the same convention used for grades above — so a leave that
+genuinely overlapped a past year still shows there even after the trainee has
+long since returned.
+
 ### Trainee emails
 
 Certificates go to an email address, so the register keeps one per trainee:
