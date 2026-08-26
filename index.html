@@ -360,7 +360,7 @@
     <div class="stat-strip" id="statStrip"></div>
     <div class="row-actions" style="margin-bottom:14px">
       <input id="dashSearch" placeholder="Search trainee…" style="max-width:260px">
-      <label class="mini-check" title="Hide trainees who were not in the programme for any session in the year"><input type="checkbox" id="dashHideNA" checked> Hide trainees not in programme</label>
+      <label class="mini-check" title="Hides trainees with no eligible sessions in the year -- CCT'd, IDT'd out, or not yet arrived. Trainees on maternity/paternity or OOP leave stay visible even with no eligible sessions, since that's a leave, not a departure."><input type="checkbox" id="dashHideNA" checked> Hide trainees not in programme</label>
       <button class="btn ghost sm" id="exportCsv">Export CSV</button>
       <button class="btn primary sm" id="reportBtn">Generate report</button>
     </div>
@@ -1250,14 +1250,20 @@ function renderYearTabs(){
   el.querySelectorAll('.yr-tab').forEach(b=>b.onclick=()=>{ dashYear=b.dataset.year; renderDash(); });
 }
 
-// rows for one scope of sessions, honouring the search box and the "hide not in programme" toggle
+// rows for one scope of sessions, honouring the search box and the "hide not in programme" toggle.
+// "Not in programme" hides trainees with no eligible sessions here -- but mat/oop
+// is a leave, not a departure, so someone on leave for this whole scope stays
+// visible; only a genuine non-member of the scope (CCT'd, IDT'd out, not yet
+// arrived, or just never eligible) is hidden.
 function dashRowsFor(sessList,q,hideNA){
   let rows=DB.trainees.filter(t=>t.name.toLowerCase().includes(q))
                       .map(t=>computeRowForSessions(t,sessList));
   let hidden=0;
   if(hideNA && sessList.length){
-    hidden=rows.filter(r=>r.eligible===0).length;
-    rows=rows.filter(r=>r.eligible>0);
+    const cutoff=sessList[sessList.length-1].month;
+    const onLeave=r=>{ const st=activeStatusType(r.trainee.id,cutoff); return st && (st.type==='mat'||st.type==='oop'); };
+    hidden=rows.filter(r=>r.eligible===0 && !onLeave(r)).length;
+    rows=rows.filter(r=>r.eligible>0 || onLeave(r));
   }
   rows.sort((a,b)=>{
     let A,B;
