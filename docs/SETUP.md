@@ -35,15 +35,53 @@ open to the world.
 The sign-in screen has a **Forgot password?** link, so organisers no longer
 need you to reset it for them from the dashboard. It emails a link (via
 Supabase Auth, not the Resend setup below) that brings them back to this same
-page to choose a new password.
+page to choose a new password. Supabase's own default email sending is fine
+for this — it's rate-limited but no `RESEND_API_KEY` or verified domain is
+needed, unlike the certificate/feedback emails below.
 
-For that link to work, add the page's own URL to **Supabase dashboard →
-Authentication → URL Configuration → Redirect URLs** (the same URL you gave
-users in step 3 above, e.g. `https://dr-redragon.github.io/ent-teaching-register/index.html`).
-Without it, Supabase silently drops the redirect and the emailed link sends
-people to whatever **Site URL** is set there instead. Supabase's own default
-email sending is fine for this — it's rate-limited but no `RESEND_API_KEY` or
-verified domain is needed, unlike the certificate/feedback emails below.
+#### You must set two URLs, or the link goes nowhere
+
+This is the one part that is not self-configuring, and getting it wrong is
+silent — the email still arrives, it just points somewhere useless. In
+**Supabase dashboard → Authentication → URL Configuration**:
+
+1. **Site URL** — set it to where the register is actually published, e.g.
+   `https://dr-redragon.github.io/ent-teaching-register/`. New projects
+   default to `http://localhost:3000`, which is a dead address for everyone
+   except a developer running a local server.
+2. **Redirect URLs** — add a wildcard covering the same site, e.g.
+   `https://dr-redragon.github.io/ent-teaching-register/**`. A wildcard
+   matters because `.../` and `.../index.html` are different URLs and the
+   match is exact; one bare entry will miss the other.
+
+The page asks Supabase to send people back to whatever address it is being
+served from. If that address is **not** in Redirect URLs, Supabase does not
+error — it quietly swaps in the Site URL instead, so a stale Site URL sends
+every reset link to the wrong place. Both settings need to be right.
+
+#### If reset links say "invalid or has expired" immediately
+
+Supabase reset links are single-use. Some mail providers — notably Outlook
+and Microsoft Defender "Safe Links" — automatically fetch links to scan them,
+which spends the link before the human clicks it. The register now reports
+this properly instead of showing a blank sign-in screen, and offers to send a
+fresh one, but the underlying fix is to stop the scan from spending anything:
+
+In **Authentication → Emails → Reset Password**, change the link in the
+template from `{{ .ConfirmationURL }}` to point at the register directly:
+
+```html
+<a href="{{ .SiteURL }}/index.html?token_hash={{ .TokenHash }}&type=recovery">Reset your password</a>
+```
+
+Now a scanner that follows the link only receives the page's static HTML; the
+token is not redeemed until the page's own JavaScript runs, which scanners
+don't do. The register understands both this and the stock link format, so
+you can make this change whenever — nothing breaks either way.
+
+You can confirm a scanner is the culprit in **Logs → Auth**: a `403` on
+`/verify` with `One-time token not found`, from a different IP or browser
+than the person resetting, seconds before or after their real click.
 
 ### Why this matters, precisely
 
@@ -351,7 +389,9 @@ the report or force the raw table open.
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
-| Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
+| Forgot-password email never arrives | Check spam — Supabase's built-in sender is rate-limited and sometimes filtered. Logs → Auth shows a `mail.send` line with `mail_type: recovery` if it really went out. |
+| Reset link opens the wrong site (or a dead `localhost:3000` page) | **Site URL** and **Redirect URLs** are wrong — see §1. This is the usual cause; the email sends fine, it just points nowhere. |
+| Reset link says "invalid or has expired" straight away | A mail scanner spent the single-use link first. Switch the email template to the `token_hash` form in §1. |
 | A page sits on "Loading…" and never finishes | Reload once. If it persists, the Supabase library failed to load from the CDN — the page now says so explicitly rather than hanging. Check the connection, or whether a hospital network is blocking `cdn.jsdelivr.net`. |
 | Trainee sign-in / feedback page asks for a password | It shouldn't — those never touch login. If it does, you're looking at `index.html` itself rather than `checkin.html` / `feedback.html`; check the link or QR code being used. |
 

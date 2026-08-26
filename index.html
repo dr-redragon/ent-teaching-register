@@ -775,13 +775,13 @@ function showLogin(message){
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('loginError').innerHTML = message? `<div class="login-error">${escHtml(message)}</div>` : '';
 }
-function showForgot(){
+function showForgot(message){
   hideAuthScreens();
   document.getElementById('forgotScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
-  document.getElementById('forgotMsg').innerHTML='';
+  document.getElementById('forgotMsg').innerHTML = message? `<div class="notice warn">${escHtml(message)}</div>` : '';
 }
 function showReset(){
   hideAuthScreens();
@@ -796,6 +796,50 @@ function hideLogin(){
   document.getElementById('mainNav').style.display='';
   document.getElementById('appMain').style.display='';
   document.getElementById('logoutBtn').style.display='inline-block';
+}
+
+/* ---- password-recovery links -------------------------------------------
+   A recovery link can come back in either of two shapes, and we accept both:
+
+   1. ?token_hash=...&type=recovery -- the email template points straight at
+      this page and nothing is spent until verifyOtp() runs. Preferred,
+      because a mail scanner that fetches the link only gets static HTML.
+   2. #access_token=...&type=recovery -- the stock template, which routes via
+      /auth/v1/verify and is consumed by the first GET. Outlook/Defender
+      "Safe Links" prefetches that GET, so the token can be burned before the
+      human ever clicks; that shows up here as an error hash instead.
+
+   Either way a failure arrives as ?error=/#error=, which we surface rather
+   than dropping the user on a blank sign-in screen with no explanation. */
+function readRecoveryLink(){
+  const q = new URLSearchParams(location.search);
+  const h = new URLSearchParams(location.hash.replace(/^#/,''));
+  const pick = (k) => q.get(k) || h.get(k);
+  const errCode = pick('error_code') || pick('error');
+  if(errCode) return { kind:'error', code:errCode, desc:pick('error_description')||'' };
+  const type = pick('type');
+  const tokenHash = q.get('token_hash');
+  if(tokenHash && type==='recovery') return { kind:'token_hash', tokenHash };
+  if(h.get('access_token') && type==='recovery') return { kind:'implicit' };
+  return { kind:null };
+}
+
+// Drop the secrets (and the error crumbs) out of the address bar and history.
+function clearRecoveryParams(){
+  const q = new URLSearchParams(location.search);
+  ['token_hash','type','error','error_code','error_description'].forEach(k=>q.delete(k));
+  const qs = q.toString();
+  history.replaceState(null,'',location.pathname+(qs?'?'+qs:''));
+}
+
+function recoveryLinkMessage(code, desc){
+  const c = String(code||'').toLowerCase();
+  if(c.includes('expired') || c.includes('otp_expired'))
+    return 'That reset link has expired or had already been used. Some email providers follow links automatically to scan them, '
+         + 'which uses the link up before you get to it. Request a fresh one below and open it as soon as it arrives.';
+  if(c==='access_denied')
+    return 'That reset link is no longer valid. Request a fresh one below.';
+  return desc || 'That reset link could not be used. Request a fresh one below.';
 }
 function wireLogin(){
   const doLogin=async()=>{
@@ -826,12 +870,18 @@ function wireLogin(){
     if(!email){ msgEl.innerHTML=`<div class="login-error">Enter your email address</div>`; return; }
     const btn=document.getElementById('forgotBtn');
     btn.disabled=true; btn.textContent='Sending…';
+    // Must exactly match an entry in Supabase -> Authentication -> URL
+    // Configuration -> Redirect URLs. If it doesn't, Supabase silently
+    // substitutes the project's Site URL and the emailed link lands
+    // somewhere else entirely -- see docs/SETUP.md.
     const redirectTo = location.origin + location.pathname;
     const {error}=await sb.auth.resetPasswordForEmail(email, { redirectTo });
     btn.disabled=false; btn.textContent='Send reset link';
-    // Always show the same success message, whether or not the address has an
-    // account -- confirming which emails exist would leak who's registered.
-    if(error && error.status && error.status >= 500){
+    // Otherwise always show the same message, whether or not the address has
+    // an account -- confirming which emails exist would leak who's registered.
+    // Rate limits and outages are the exception: silently claiming "sent"
+    // when nothing was sent just leaves people waiting on a phantom email.
+    if(error && (error.status===429 || error.status>=500)){
       msgEl.innerHTML=`<div class="login-error">${escHtml(error.message)}</div>`;
       return;
     }
@@ -2918,18 +2968,37 @@ whenReady(async function(){
   }
 
   wireLogin();
-  // A password-recovery link lands here with the recovery token in the URL;
-  // supabase-js exchanges it for a session and fires this event before the
-  // getSession() below runs, so check it first and show the reset form
-  // instead of booting straight into the app with a session the user hasn't
-  // chosen to be in.
-  let recovering=false;
+
+  const link = readRecoveryLink();
+
+  // The link came back rejected -- expired, already spent, or scanned away.
+  if(link.kind==='error'){
+    clearRecoveryParams();
+    showForgot(recoveryLinkMessage(link.code, link.desc));
+    return;
+  }
+
+  // Scanner-safe shape: nothing has been spent yet, so redeem it now.
+  if(link.kind==='token_hash'){
+    const tokenHash = link.tokenHash;
+    clearRecoveryParams();
+    const {error} = await sb.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+    if(error){ showForgot(recoveryLinkMessage(error.code, error.message)); return; }
+    showReset();
+    return;
+  }
+
+  // Stock shape: supabase-js reads the tokens out of the hash itself and
+  // fires PASSWORD_RECOVERY while getSession() is still awaiting init. Trust
+  // the URL we parsed above rather than that event's timing, so we never boot
+  // into the app on a session the user hasn't chosen to be in.
+  let recovering = (link.kind==='implicit');
   sb.auth.onAuthStateChange((event)=>{
     if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(); }
     else if(event==='SIGNED_OUT') showLogin();
   });
   const {data:{session}} = await sb.auth.getSession();
-  if(recovering){ /* showReset() already called above */ }
+  if(recovering){ clearRecoveryParams(); showReset(); }
   else if(session){ await bootApp(); }
   else { showLogin(); }
 });
