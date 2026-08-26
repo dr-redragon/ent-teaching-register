@@ -4,22 +4,23 @@ Static website ready for GitHub Pages.
 
 ## Deploy
 
-1. Create a new GitHub repository.
-2. Upload all files from this folder.
-3. Go to Settings → Pages.
-4. Under 'Build and deployment':
-   - Source: Deploy from a branch
-   - Branch: main
-   - Folder: /(root)
-5. Save.
+The site is published by GitHub Pages from `main`, at the custom domain:
 
-GitHub will publish the site at:
-https://YOUR_USERNAME.github.io/REPOSITORY_NAME/
-https://dr-redragon.github.io/ent-teaching-register/
+**https://register.traineehq.com**
+
+`CNAME` in the repository root is what tells GitHub Pages to serve the site
+there. It must stay at the root and contain the bare hostname — no `https://`,
+no trailing slash.
+
+Settings → Pages is set to *Deploy from a branch*, branch `main`, folder
+`/(root)`. Push to `main` and the site rebuilds.
+
+See [docs/SETUP.md §5](docs/SETUP.md) for the DNS records, the order the
+cutover has to happen in, and what to change in Supabase alongside it.
 
 ## Notes
 
-- Data is stored in the browser using localStorage.
+- Data is stored in Supabase; see [docs/SETUP.md](docs/SETUP.md).
 - QR code functionality uses a public CDN.
 
 ## Academic years
