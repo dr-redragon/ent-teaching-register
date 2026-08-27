@@ -22,7 +22,7 @@ const CORS = {
   "Access-Control-Max-Age": "86400",
 };
 
-const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") || "https://dr-redragon.github.io/ent-teaching-register").replace(/\/+$/, "");
+const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") || "https://register.traineehq.com").replace(/\/+$/, "");
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

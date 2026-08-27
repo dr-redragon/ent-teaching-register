@@ -39,7 +39,7 @@ page to choose a new password.
 
 For that link to work, add the page's own URL to **Supabase dashboard →
 Authentication → URL Configuration → Redirect URLs** (the same URL you gave
-users in step 3 above, e.g. `https://dr-redragon.github.io/ent-teaching-register/index.html`).
+users in step 3 above, e.g. `https://register.traineehq.com/index.html`).
 Without it, Supabase silently drops the redirect and the emailed link sends
 people to whatever **Site URL** is set there instead. Supabase's own default
 email sending is fine for this — it's rate-limited but no `RESEND_API_KEY` or
@@ -75,7 +75,7 @@ Dashboard → **Project Settings → Edge Functions → Secrets** on the
 | `CERT_FROM_NAME` | no | Sender name. Defaults to `ENT Regional Teaching`. |
 | `CERT_REPLY_TO` | no | Where replies go — comma-separated. **This one can be a plain Gmail or NHS address**, because a reply-to is not a sender. Set it to the address you want trainees to reach you on. |
 | `CERT_LOGO_URL` | no | Overrides the logo on the certificate. By default it's fetched from `APP_BASE_URL` + `/assets/logo.png` — the copy already in this repo — so you don't need to set this unless you want a different image. **PNG or JPEG** (an SVG must be converted first). |
-| `APP_BASE_URL` | no | Where the pages are published. Defaults to `https://dr-redragon.github.io/ent-teaching-register`. The feedback link inside emails, and the default logo above, are both built from this — set it if you move the site. |
+| `APP_BASE_URL` | no | Where the pages are published. Defaults to `https://register.traineehq.com` (§5). The feedback link inside emails, and the default logo above, are both built from this — set it if you move the site. |
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform —
 you do not add those.
@@ -340,7 +340,98 @@ the report or force the raw table open.
 
 ---
 
-## 5. If something goes wrong
+## 5. Custom domain (register.traineehq.com)
+
+The register is served by GitHub Pages at **https://register.traineehq.com**,
+with DNS held at Cloudflare. `CNAME` in the repository root is the whole of the
+GitHub side of that.
+
+**A domain points at a host, never at a path.** `traineehq.com/register` is not
+something DNS or a `CNAME` file can express — hence the subdomain. If you ever
+do want the apex to lead here, add a Cloudflare redirect rule sending
+`traineehq.com/register*` to `register.traineehq.com`; don't try to do it in DNS.
+
+### The DNS record
+
+Cloudflare dashboard → **traineehq.com → DNS → Records → Add record**:
+
+| Field | Value |
+|---|---|
+| Type | `CNAME` |
+| Name | `register` |
+| Target | `dr-redragon.github.io` |
+| Proxy status | **DNS only** (grey cloud) |
+| TTL | Auto |
+
+The target is the *account* host `dr-redragon.github.io` with no path on the
+end. GitHub works out which repository to serve from the `CNAME` file, not from
+the DNS record — there is nowhere in a DNS record to put a path.
+
+**Leave it grey-clouded.** Proxying (orange cloud) breaks GitHub's certificate
+issuance while the domain is being set up, and if Cloudflare's SSL/TLS mode is
+`Flexible` it puts the site in an infinite redirect loop, because GitHub Pages
+redirects HTTP to HTTPS and Cloudflare keeps answering in plain HTTP. GitHub
+Pages already serves through its own CDN with free HTTPS, so the proxy buys
+little here. If you do want it on later: set **SSL/TLS → Overview** to `Full`
+first, *then* flip the record to proxied.
+
+### The order matters
+
+Do these in order. Step 2 is the point of no return: as soon as GitHub accepts
+the custom domain, the old `dr-redragon.github.io/ent-teaching-register/` URL
+starts 301-redirecting to `register.traineehq.com`. Do it before the DNS record
+exists and the site is unreachable until it does.
+
+1. **Add the Cloudflare record above.** Confirm it resolves before going on:
+
+   ```
+   dig +short register.traineehq.com
+   ```
+
+   It should print `dr-redragon.github.io`. If it prints nothing, wait and retry
+   — don't continue.
+
+2. **Merge to `main`.** That lands `CNAME` at the repository root, and GitHub
+   Pages picks the domain up on the next build. Settings → Pages will show
+   `register.traineehq.com` with a DNS check against it.
+
+3. **Wait for the certificate.** Settings → Pages reports "provisioning" while
+   GitHub gets a Let's Encrypt certificate. Usually minutes, occasionally an
+   hour. **Enforce HTTPS** is greyed out until it finishes — tick it as soon as
+   it isn't.
+
+4. **Repoint Supabase.** Two places, both in the Supabase dashboard:
+
+   - **Edge Functions → Secrets**: set `APP_BASE_URL` to
+     `https://register.traineehq.com`. This is what builds the feedback link
+     inside emails and the logo on certificates (§2). The code defaults to this
+     value now, so the secret is belt-and-braces — but set it, because an
+     explicit secret is what you'll edit next time the address changes.
+   - **Authentication → URL Configuration**: set **Site URL** to
+     `https://register.traineehq.com/index.html`, and add that same URL to
+     **Redirect URLs**. Without it the forgot-password link (§1) silently sends
+     organisers somewhere else.
+
+### What doesn't break
+
+Nothing in the pages themselves hardcodes an address — every link, asset and
+generated QR code is built relative to whatever URL the page is loaded from. So
+the site is correct at the new domain the moment it serves from it, with no code
+change.
+
+QR codes and certificate links already handed out with the old
+`github.io` address keep working: GitHub redirects them to the new domain. Worth
+regenerating session QR codes anyway, so what people scan is one hop shorter.
+
+### While you're in there
+
+You now own a domain, which is what §2 asks for to make certificate emails
+reach trainees. Verify `traineehq.com` in Resend and set `CERT_FROM_EMAIL` to
+something like `certificates@traineehq.com`. That is a separate set of DNS
+records (SPF, DKIM) in the same Cloudflare panel, and unrelated to the CNAME
+above — they coexist fine.
+
+## 6. If something goes wrong
 
 | Symptom | Cause |
 |---|---|
@@ -352,6 +443,10 @@ the report or force the raw table open.
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
 | Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
+| Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |
+| Redirect loop / "too many redirects" on the domain | Cloudflare's SSL/TLS mode is `Flexible` with the record proxied. Set **SSL/TLS → Overview** to `Full`, or grey-cloud the record back to DNS only (§5). |
+| Settings → Pages stuck on "provisioning" certificate | The record is orange-clouded, so GitHub can't complete its challenge. Switch it to **DNS only** and the certificate issues within minutes (§5). |
+| Emailed feedback links point at the old github.io URL | `APP_BASE_URL` still holds the old address, or was never set. Supabase → Edge Functions → Secrets (§5, step 4). Old links still redirect, so this is cosmetic rather than broken. |
 | A page sits on "Loading…" and never finishes | Reload once. If it persists, the Supabase library failed to load from the CDN — the page now says so explicitly rather than hanging. Check the connection, or whether a hospital network is blocking `cdn.jsdelivr.net`. |
 | Trainee sign-in / feedback page asks for a password | It shouldn't — those never touch login. If it does, you're looking at `index.html` itself rather than `checkin.html` / `feedback.html`; check the link or QR code being used. |
 

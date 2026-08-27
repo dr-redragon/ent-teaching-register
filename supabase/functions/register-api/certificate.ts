@@ -41,7 +41,7 @@ function formatDate(iso: string): string {
 // the site is published (the same convention APP_BASE_URL uses) so certificates
 // carry the right branding with no configuration. CERT_LOGO_URL overrides it.
 const DEFAULT_LOGO_URL =
-  (Deno.env.get("APP_BASE_URL") || "https://dr-redragon.github.io/ent-teaching-register")
+  (Deno.env.get("APP_BASE_URL") || "https://register.traineehq.com")
     .replace(/\/+$/, "") + "/assets/logo.png";
 
 async function embedFromBytes(pdf: PDFDocument, bytes: Uint8Array): Promise<PDFImage | null> {
