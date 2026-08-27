@@ -354,10 +354,10 @@
   <p class="helper" style="margin-top:14px"><a href="#" id="backToLoginLink">Back to sign in</a></p>
 </div>
 
-<!-- ===== SET NEW PASSWORD (arrived via emailed reset link) ===== -->
+<!-- ===== SET NEW PASSWORD (arrived via emailed invite/reset link) ===== -->
 <div class="kiosk-card card pad" id="resetScreen" style="display:none">
-  <h2 class="panel-title" style="margin-bottom:2px">Choose a new password</h2>
-  <p class="panel-lede" style="margin-bottom:18px">This resets the password for your organiser account.</p>
+  <h2 class="panel-title" style="margin-bottom:2px" id="resetTitle">Choose a new password</h2>
+  <p class="panel-lede" style="margin-bottom:18px" id="resetLede">This resets the password for your organiser account.</p>
   <div id="resetMsg"></div>
   <div class="field">
     <label class="fld">New password</label>
@@ -783,13 +783,17 @@ function showForgot(){
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('forgotMsg').innerHTML='';
 }
-function showReset(){
+function showReset(invite){
   hideAuthScreens();
   document.getElementById('resetScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('resetMsg').innerHTML='';
+  document.getElementById('resetTitle').textContent = invite ? 'Welcome — create your password' : 'Choose a new password';
+  document.getElementById('resetLede').textContent = invite
+    ? 'You’ve been invited as an organiser. Set a password below to activate your account.'
+    : 'This resets the password for your organiser account.';
 }
 function hideLogin(){
   hideAuthScreens();
@@ -2909,6 +2913,11 @@ whenReady(async function(){
     showLogin('Could not load the sign-in library. Check your connection and reload.');
     return;
   }
+  // An invite or password-recovery link lands here with a token in the URL
+  // hash (#access_token=...&type=invite|recovery). supabase-js consumes and
+  // strips that hash as soon as it processes the session, so grab the type
+  // now, synchronously, before creating the client -- it's gone a moment later.
+  const linkType = new URLSearchParams(location.hash.replace(/^#/,'')).get('type');
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){
@@ -2918,14 +2927,17 @@ whenReady(async function(){
   }
 
   wireLogin();
-  // A password-recovery link lands here with the recovery token in the URL;
-  // supabase-js exchanges it for a session and fires this event before the
-  // getSession() below runs, so check it first and show the reset form
+  // supabase-js exchanges the link's token for a session before the
+  // getSession() below runs. For a recovery link it also fires a
+  // PASSWORD_RECOVERY event; an invite link instead just signs the user in
+  // (invited users have no password yet to "recover"), so it wouldn't be
+  // caught by that event alone. Either way, show the set-password form
   // instead of booting straight into the app with a session the user hasn't
-  // chosen to be in.
-  let recovering=false;
+  // knowingly chosen -- and, for invites, hasn't set a password for at all.
+  let recovering = linkType==='invite' || linkType==='recovery';
+  if(recovering) showReset(linkType==='invite');
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(); }
+    if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(linkType==='invite'); }
     else if(event==='SIGNED_OUT') showLogin();
   });
   const {data:{session}} = await sb.auth.getSession();
