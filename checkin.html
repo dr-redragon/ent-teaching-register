@@ -36,6 +36,7 @@
       <div class="field" id="otherNameField" style="display:none">
         <label class="fld" for="otherName">Type your full name</label>
         <input id="otherName" placeholder="e.g. Alex Collingwood" autocomplete="name">
+        <p class="helper">You'll be added to the register with these details, so your name is on the list next time.</p>
       </div>
 
       <div class="field">
@@ -145,6 +146,9 @@ async function boot() {
 // Mirror the check-in into the register blob so the organiser's grid stays live.
 // record_local_checkin() is a SECURITY DEFINER function that patches just the
 // one attendance key — register_store itself no longer grants anon any access.
+// Only for trainees picked off the roster: someone who typed their own name is
+// added to the roster AND marked present server-side by the check-in function,
+// since creating a trainee is not something anon is trusted to do from here.
 // Best effort only: the Supabase attendee row is the record that matters, and the
 // organiser console can re-sync at any time.
 async function mirrorToRegister(traineeId, grade) {
@@ -200,14 +204,17 @@ async function submit() {
   btn.innerHTML = '<span class="spinner"></span>Signing you in…';
 
   try {
-    await ENT.api('check-in', { session_id: SESSION_ID, name, email, grade, local_trainee_id: localTraineeId });
+    const res = await ENT.api('check-in', { session_id: SESSION_ID, name, email, grade, local_trainee_id: localTraineeId });
     if (choice !== '__other') await mirrorToRegister(choice, grade);
     el('form').style.display = 'none';
     el('done').style.display = 'block';
     el('doneName').textContent = "You're signed in";
     el('doneMsg').textContent =
       `${name} (${grade}) — ${session.title}. After the session you'll get a short feedback form; ` +
-      `completing it releases your certificate` + (email ? ` to ${email}` : ' to the email we hold for you') + `.`;
+      `completing it releases your certificate` + (email ? ` to ${email}` : ' to the email we hold for you') + `.` +
+      // Only when the server actually created the roster entry -- for a typed
+      // name that turned out to already be on the list, there is nothing new.
+      (res && res.enrolled ? " You've been added to the register, so your name will be on the list next time." : '');
   } catch (err) {
     showError(err.message || 'Could not sign you in. Please try again.');
     btn.disabled = false;
