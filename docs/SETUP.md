@@ -33,17 +33,55 @@ open to the world.
 ### Forgotten passwords
 
 The sign-in screen has a **Forgot password?** link, so organisers no longer
-need you to reset it for them from the dashboard. It emails a link (via
-Supabase Auth, not the Resend setup below) that brings them back to this same
-page to choose a new password.
+need you to reset it for them from the dashboard. It emails a link that brings
+them back to this same page to choose a new password. That email is sent by
+Supabase Auth rather than by the register itself — which is why it needs its own
+sender setup (§1a) to come from your domain.
 
 For that link to work, add the page's own URL to **Supabase dashboard →
 Authentication → URL Configuration → Redirect URLs** (the same URL you gave
 users in step 3 above, e.g. `https://register.traineehq.com/index.html`).
 Without it, Supabase silently drops the redirect and the emailed link sends
-people to whatever **Site URL** is set there instead. Supabase's own default
-email sending is fine for this — it's rate-limited but no `RESEND_API_KEY` or
-verified domain is needed, unlike the certificate/feedback emails below.
+people to whatever **Site URL** is set there instead.
+
+### Sending the reset email from your own address too — §1a
+
+This one is easy to miss, because it is the one email the register does **not**
+send. Certificates, feedback pushes and chasers all go out through the Edge
+Function, which uses Resend and the `CERT_FROM_EMAIL` below. The password-reset
+email is sent by **Supabase Auth itself**, which knows nothing about any of
+that — so out of the box it arrives from Supabase's own shared sender, not from
+`no-reply@traineehq.com`, however the secrets below are set.
+
+Pointing Auth at the same domain means giving it its own SMTP credentials.
+Resend supports this directly and it is the same account and domain, so there is
+nothing new to verify:
+
+**Supabase dashboard → Project Settings → Authentication → SMTP Settings →
+Enable Custom SMTP**, then:
+
+| Field | Value |
+|---|---|
+| Sender email | `no-reply@traineehq.com` |
+| Sender name | `ENT Regional Teaching` |
+| Host | `smtp.resend.com` |
+| Port | `587` |
+| Username | `resend` — the literal word, not your address |
+| Password | a Resend API key (the same one as `RESEND_API_KEY`, or a fresh one) |
+
+Two things to do straight after saving, both easy to forget:
+
+- **Raise the rate limit.** Enabling custom SMTP drops Auth to a deliberate
+  **30 emails per hour** to protect a new sender's reputation. For a handful of
+  organisers resetting passwords that is already plenty, but it is set at
+  **Authentication → Rate Limits** if you ever need more.
+- **Know that the quota is now shared.** Auth emails start counting against the
+  same Resend free-tier allowance as certificates and feedback pushes (100/day,
+  3,000/month). Password resets are rare enough not to matter; it is only worth
+  remembering if a day ever runs close to the limit.
+
+Nothing else changes: the reset link, the redirect URL above and the page's own
+behaviour are all exactly as before — only the From: address on the email moves.
 
 ### Why this matters, precisely
 
@@ -79,6 +117,12 @@ Dashboard → **Project Settings → Edge Functions → Secrets** on the
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform —
 you do not add those.
+
+**These secrets do not reach the password-reset email.** They configure the Edge
+Function, which sends certificates, feedback pushes and chasers. Supabase Auth
+sends its own email (password resets, and any invite you send from the dashboard)
+through an entirely separate channel that never reads these — pointing it at the
+same `no-reply@` address is the SMTP setup in §1a.
 
 ### Making trainees actually receive their emails
 
@@ -497,7 +541,9 @@ above — they coexist fine.
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
-| Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
+| Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam. If custom SMTP is set up (§1a), the send shows in **Resend → Emails** like any other; if it isn't, you're on Supabase's built-in sender, which is rate-limited and more often filtered. |
+| Password reset arrives from Supabase, not `no-reply@traineehq.com` | Expected until custom SMTP is configured — the Edge Function secrets in §2 don't apply to Auth emails. Set it up in §1a. |
+| Password resets suddenly stop after a few | Custom SMTP caps Auth at 30 emails/hour by default. Raise it at Authentication → Rate Limits (§1a). |
 | Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |
 | Redirect loop / "too many redirects" on the domain | Cloudflare's SSL/TLS mode is `Flexible` with the record proxied. Set **SSL/TLS → Overview** to `Full`, or grey-cloud the record back to DNS only (§5). |
 | Settings → Pages stuck on "provisioning" certificate | The record is orange-clouded, so GitHub can't complete its challenge. Switch it to **DNS only** and the certificate issues within minutes (§5). |
