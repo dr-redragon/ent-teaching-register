@@ -275,8 +275,31 @@ async function handleCheckIn(db: SupabaseClient, body: Record<string, unknown>) 
 
   if (!sessionId || !name) return json({ error: "Session and name are required" }, 400);
 
-  const { data: session } = await db.from("sessions").select("id,title,session_date").eq("id", sessionId).maybeSingle();
+  const { data: session } = await db.from("sessions").select("id,title,session_date,local_id").eq("id", sessionId).maybeSingle();
   if (!session) return json({ error: "This sign-in link is not valid any more" }, 404);
+
+  // "My name is not on the list" used to produce an attendee row and nothing
+  // else: the register reported them as unmatched at sync time and forgot them.
+  // They now join the roster here, as they sign in — marked present for this
+  // teaching day and on the list for every future one. Matching inside the
+  // function is by name, so typing a name that is already on the roster attaches
+  // to that record instead of creating a second one.
+  let traineeId = localTraineeId;
+  let enrolled = false;
+  if (!traineeId) {
+    const { data: joined, error: enrolError } = await db.rpc("enrol_local_trainee", {
+      p_name: name,
+      p_email: typedEmail,
+      p_grade: grade ?? "",
+      p_session_id: session.local_id,
+    });
+    if (enrolError) console.error("enrol_local_trainee failed", enrolError);   // attendee row still stands
+    const row = joined as { trainee_id?: string | null; created?: boolean } | null;
+    if (row?.trainee_id) traineeId = row.trainee_id;
+    // `created` is false when the typed name turned out to match somebody
+    // already on the roster -- nothing new to tell them about, in that case.
+    enrolled = row?.created === true;
+  }
 
   // Resolve the email server-side: a typed address is saved back onto the
   // trainee's roster record (so it's on file next time); a blank one falls back
@@ -286,7 +309,7 @@ async function handleCheckIn(db: SupabaseClient, body: Record<string, unknown>) 
   let email = typedEmail;
   try {
     const { data: resolved } = await db.rpc("resolve_trainee_email", {
-      p_trainee_id: localTraineeId,
+      p_trainee_id: traineeId,
       p_email: typedEmail,
     });
     if (typeof resolved === "string" && resolved) email = cleanEmail(resolved);
@@ -309,7 +332,7 @@ async function handleCheckIn(db: SupabaseClient, body: Record<string, unknown>) 
     console.error("check-in failed", error);
     return json({ error: "Could not record your check-in - please try again" }, 500);
   }
-  return json({ ok: true, attendee_id: data.id, name: data.name, session_title: session.title });
+  return json({ ok: true, attendee_id: data.id, name: data.name, session_title: session.title, enrolled });
 }
 
 async function handleSubmitFeedback(db: SupabaseClient, body: Record<string, unknown>) {

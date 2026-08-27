@@ -1890,9 +1890,10 @@ function renderCloudPanel(){
        </span>
        <button class="btn ghost sm" id="cloudSync">Re-sync sign-ins</button>
      </div>
-     <p class="helper" id="cloudSyncMsg">This is the page the QR opens. Sign-ins reach the attendance grid on their
-       own — re-sync is the repair button: use it if someone signed in while offline, if you added them to the roster
-       after they signed in, or to pull in emails and grades people typed on the day.</p>
+     <p class="helper" id="cloudSyncMsg">This is the page the QR opens. Anyone whose name is not on the list types it
+       themselves and joins the roster on the spot. Sign-ins reach the attendance grid on their own — re-sync is the
+       repair button: use it if someone signed in while offline, or to pull in emails and grades people typed on the
+       day.</p>
 
      <div class="grouphead">After the session</div>
      <div class="row-actions">
@@ -2021,7 +2022,10 @@ async function loadCloudCounts(s){
 }
 
 // Cloud sign-ins are matched to the register by name. Anyone who typed a name
-// that is not on the roster is reported rather than guessed at.
+// that is not on the roster joins it here: the check-in function already enrols
+// them as they sign in, so this is the repair path for anything that missed it
+// (an offline moment, a session signed into before this existed, a name marked
+// present straight on the live console).
 async function syncCloudCheckins(s){
   setCloudSyncMsg('Syncing sign-ins…');
   try{
@@ -2032,26 +2036,40 @@ async function syncCloudCheckins(s){
     const pushed = await pushAttendance(s, presentHere, true);
     const res=await callApi('session-status',{session_id:s.cloudId});
     const byName=new Map(DB.trainees.map(t=>[t.name.trim().toLowerCase(), t]));
-    let added=0, emailed=0; const unmatched=[];
+    let added=0, emailed=0; const enrolled=[];
     (res.attendees||[]).filter(a=>a.checked_in_at).forEach(a=>{
-      const t=byName.get(String(a.name).trim().toLowerCase());
-      if(!t){ unmatched.push(a.name); return; }
+      const name=String(a.name||'').trim();
+      if(!name) return;
+      let t=byName.get(name.toLowerCase());
+      if(!t){
+        // Signed in as "my name is not on the list". They join the roster rather
+        // than being reported and forgotten -- this session counts for them, and
+        // they are on the list for every teaching day from here on. Grade and
+        // gradeFrom are left to refreshGrades() below, which dates the grade to
+        // this session's month exactly as it does for everybody else.
+        t={id:uid(),name,email:'',grade:'',gradeFrom:''};
+        DB.trainees.push(t);
+        byName.set(name.toLowerCase(), t);
+        enrolled.push(name);
+      }
       const key=attKey(t.id,s.id);
       if(!DB.attendance[key]){ DB.attendance[key]={grade:a.grade||''}; added++; }
       // What they put on the form is the trainee's own statement of their grade,
       // so a corrected re-sign-in replaces what we held rather than being ignored.
       else if(a.grade && DB.attendance[key].grade!==a.grade){ DB.attendance[key].grade=a.grade; }
-      // backfill a missing roster email from what they signed in with
-      if(a.email && !(t.email||'').trim()){ t.email=a.email; emailed++; }
+      // backfill a missing roster email from what they signed in with. The
+      // server stands in an undeliverable placeholder for anyone marked present
+      // with no address on file; writing that back would look like an email.
+      if(a.email && !/@no-email\.invalid$/i.test(a.email) && !(t.email||'').trim()){ t.email=a.email; emailed++; }
     });
     const regraded = refreshGrades();
-    if(added||emailed||regraded) await saveDB();
+    if(added||emailed||regraded||enrolled.length) await saveDB();
     const noEmail = (pushed && pushed.no_email) || [];
     const summary = `${added} new sign-in${added===1?'':'s'} added to the register.` +
       (pushed && pushed.marked? ` ${pushed.marked} marked present here ${pushed.marked===1?'is':'are'} now on the live list too.` : '') +
       (emailed? ` ${emailed} email${emailed===1?'':'s'} added to the roster.` : '') +
       (noEmail.length? ` No email on file, so no certificate can reach them: ${noEmail.join(', ')}.` : '') +
-      (unmatched.length? ` Not on the roster, so skipped: ${unmatched.join(', ')}.` : '');
+      (enrolled.length? ` Added to the roster as new trainee${enrolled.length===1?'':'s'}: ${enrolled.join(', ')}.` : '');
     renderAll();                       // re-renders this panel, so report afterwards
     setCloudSyncMsg(summary);
     if(added) toast(added+' sign-ins pulled in');
