@@ -61,6 +61,14 @@ go through two narrow functions — `public_roster()` (just trainee and session
 names, nothing else) and `record_local_checkin()` (writes one attendance entry,
 nothing else) — rather than the register itself.
 
+Adding a trainee to the roster is deliberately *not* on that list. A sign-in
+from someone whose name isn't there (§3) is enrolled by the Edge Function on
+the server, through `enrol_local_trainee()`, which is granted to nothing else —
+so the name that reaches the roster is one attached to a real sign-in against a
+real published session, not anything a browser holding the public key could
+write on its own. The kiosk fallback has no "not on the list" option for the
+same reason: it talks to the database directly, with no server in between.
+
 ---
 
 ## 2. Supabase secrets
@@ -175,10 +183,12 @@ lives.
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
    and sign in. If we already hold their email (see below) they can leave that
    field blank; if not, they're asked to add one so their certificate can reach
-   them. Their attendance also lands in the register grid; **Re-sync sign-ins**
-   repairs it at any point, and also backfills any missing roster emails from
-   what people signed in with. The icon beside **Open sign-in page** copies the
-   link, if you'd rather send it than show the QR.
+   them. Anyone whose name isn't on the list types it themselves and joins the
+   roster on the spot — see *Someone not on the list* below. Their attendance
+   also lands in the register grid; **Re-sync sign-ins** repairs it at any
+   point, and also backfills any missing roster emails from what people signed
+   in with. The icon beside **Open sign-in page** copies the link, if you'd
+   rather send it than show the QR.
 3. **At the end**, push the feedback form — right there on the *Check-in / QR*
    tab, under **Send the feedback form now**: **Email all outstanding** sends it
    to every checked-in trainee who hasn't given feedback yet, or tick
@@ -238,6 +248,38 @@ connection), the register still records it locally and says so — use
 **Re-sync sign-ins** on the *Check-in / QR* tab afterwards, which now also
 pushes anyone marked present here that never made it through, and reports
 by name anyone still missing an email once it has.
+
+### Someone not on the list
+
+The sign-in page ends its name dropdown with **My name is not on the list…**.
+Whoever picks it types their full name, grade and email, and that is all they
+have to do: they are added to the register's trainee list there and then,
+marked present for that teaching day, and their name is in the dropdown for
+every teaching day after it. Nothing needs adding by hand afterwards — a new
+starter, a rotation you didn't know about, a visitor from another deanery all
+sign themselves in.
+
+Three things worth knowing:
+
+- **Names are matched, so nobody is added twice.** A typed name that already
+  exists on the roster (someone who scrolled past their own entry, or signed in
+  again from a second phone) attaches to that record instead of creating a
+  duplicate. Matching ignores case and surrounding spaces. It does *not* catch
+  a genuinely different spelling — "Jon Smith" for "John Smith" makes a second
+  trainee, which you merge by deleting one on the *Trainees & sessions* tab.
+- **They start with no history.** A new trainee is eligible from the register's
+  first session, so a mid-year joiner shows as absent for the teaching days
+  before they arrived. If they joined part-way through, give them an **IDT in**
+  status from their arrival month (see *Long-term status* above) and those
+  earlier days stop counting against them.
+- **Their grade behaves like everyone else's.** It is dated to that session's
+  month, so a later sign-in supersedes it and one you set by hand sticks until
+  they next sign in.
+
+**Re-sync sign-ins** does the same repair after the fact: anyone on the live
+list whose name isn't on the roster is added to it and marked present, and the
+summary names who joined. That covers the sessions signed into before this
+existed, and the rare sign-in whose roster write didn't land.
 
 ### Deleting a session's feedback
 
@@ -316,7 +358,8 @@ Certificates go to an email address, so the register keeps one per trainee:
   add-trainee form takes an optional email up front.
 - **At sign-in**, a trainee we already have an email for can leave the field
   blank; one we don't is required to add it, and it's saved to their record for
-  next time. A trainee not on the roster always types one.
+  next time. Someone not on the roster always types one, and it goes onto the
+  roster record created for them.
 - The stored address is never exposed to the anonymous sign-in page — it's
   filled in and read only on the server, and only ever used to send that
   trainee their own certificate.
@@ -465,7 +508,7 @@ above — they coexist fine.
 | Certificate says `skipped_not_checked_in` | They gave feedback but never signed in on the day. Deliberate: feedback is kept, no certificate. Use **Send now** to override. |
 | Emails only reach you | The Resend sandbox sender — `CERT_FROM_EMAIL` is unset or still `@resend.dev`. Verify a domain (§2). The Check-in tab and session console both flag this explicitly. |
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
-| Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
+| Two entries for the same trainee | They signed in as "my name is not on the list" with a different spelling from their roster entry, so the match missed. Delete the duplicate on the *Trainees & sessions* tab, then tick them present on the grid for that day. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
 | Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
 | Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |
