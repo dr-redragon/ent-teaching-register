@@ -1761,7 +1761,7 @@ function renderChasePreview(){
   document.getElementById('chasePreview').innerHTML=
     '<div class="hdr"><strong>Subject:</strong> '+escHtml(subject||'(no subject)')+'<br>'+
     '<strong>To:</strong> '+chaseTargets.length+' recipient'+(chaseTargets.length===1?'':'s')+', all in BCC — none of them can see the others<br>'+
-    '<strong>Reply-to:</strong> '+(replies.length? escHtml(replies.join(', ')) : '<em>none set — replies go to the sending address</em>')+'</div>'+
+    '<strong>Reply-to:</strong> '+(replies.length? escHtml(replies.join(', ')) : '<em>none set — the sending address is a no-reply with no mailbox, so replies will bounce. Add one below.</em>')+'</div>'+
     body.split(/\n{2,}/).filter(p=>p.trim()).map(pp=>'<p>'+escHtml(pp).replace(/\n/g,'<br>')+'</p>').join('');
 }
 

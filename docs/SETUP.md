@@ -73,7 +73,7 @@ Dashboard → **Project Settings → Edge Functions → Secrets** on the
 | `RESEND_API_KEY` | for emails | From [resend.com](https://resend.com) → API Keys. Until it is set, nothing is emailed and certificates report `email_not_configured` rather than failing silently. |
 | `CERT_FROM_EMAIL` | **to reach trainees** | Sender address. Must be at a domain you have verified in Resend — see below. Defaults to `onboarding@resend.dev`, which reaches nobody but you. |
 | `CERT_FROM_NAME` | no | Sender name. Defaults to `ENT Regional Teaching`. |
-| `CERT_REPLY_TO` | no | Where replies go — comma-separated. **This one can be a plain Gmail or NHS address**, because a reply-to is not a sender. Set it to the address you want trainees to reach you on. |
+| `CERT_REPLY_TO` | **yes, in practice** | Where replies go — comma-separated. **This one can be a plain Gmail, iCloud or NHS address**, because a reply-to is not a sender. Set it to the address you want trainees to reach you on. It is only optional in the sense that email still sends without it: because `CERT_FROM_EMAIL` is a `no-reply@` with no mailbox behind it, leaving this unset means every trainee who hits Reply gets a bounce, and the chaser has no real inbox to address itself to (below). |
 | `CERT_LOGO_URL` | no | Overrides the logo on the certificate. By default it's fetched from `APP_BASE_URL` + `/assets/logo.png` — the copy already in this repo — so you don't need to set this unless you want a different image. **PNG or JPEG** (an SVG must be converted first). |
 | `APP_BASE_URL` | no | Where the pages are published. Defaults to `https://register.traineehq.com` (§5). The feedback link inside emails, and the default logo above, are both built from this — set it if you move the site. |
 
@@ -150,6 +150,33 @@ certificates, so a single day fits comfortably; two big days in one calendar day
 would not. The rate limit is handled for you — sends are spaced out and a
 throttled one is retried rather than being dropped, which is what used to make a
 large push quietly reach only the first few people.
+
+### "Sent" means Resend accepted it, not that it arrived
+
+Worth knowing before you read a push result as proof of delivery. Resend
+validates an address's *shape*, not whether the mailbox exists, and it answers
+the API call before it has tried to deliver anything. So a well-formed address
+at a domain that cannot receive — a typo'd `@gmial.com`, a trainee's expired
+NHS address — is reported as **sent**, and the bounce arrives minutes later,
+asynchronously, where the register never sees it.
+
+What this means in practice:
+
+- The `sent` count on a push is "handed to Resend without complaint", not
+  "landed in an inbox". The failures the register *does* name (no email on
+  file, an address Resend rejected outright, an unverified domain, a rate
+  limit) are real and worth acting on; a clean run is not a delivery receipt.
+- **Bounces are visible in Resend → Emails**, filtered by status. That is the
+  only place they show. Worth a look after the first push of a teaching day,
+  and the place to check when a trainee says a certificate never arrived and
+  the console says it went.
+- A trainee whose address bounces stays marked as sent in the console, so a
+  resend needs **Send now** rather than a re-push (which skips them as
+  already done).
+
+Closing the loop properly would mean handling Resend's bounce webhooks and
+writing the result back onto the attendee — a real feature, not a setting, and
+not something the register does today.
 
 ### Your logo
 
@@ -464,6 +491,9 @@ above — they coexist fine.
 | Feedback saves, no certificate | Check the console. `Gated` = no feedback yet; `Due` = feedback in, email not sent — usually `RESEND_API_KEY` missing or a send failure. |
 | Certificate says `skipped_not_checked_in` | They gave feedback but never signed in on the day. Deliberate: feedback is kept, no certificate. Use **Send now** to override. |
 | Emails only reach you | The Resend sandbox sender — `CERT_FROM_EMAIL` is unset or still `@resend.dev`. Verify a domain (§2). The Check-in tab and session console both flag this explicitly. |
+| A trainee replied and it bounced | `CERT_REPLY_TO` is unset. The sender is `no-reply@traineehq.com`, which has no mailbox — the domain's MX points at iCloud and `no-reply` is not one of its aliases, so iCloud rejects it. Set `CERT_REPLY_TO` to a real address (§2). |
+| Console says a certificate was sent but it never arrived | "Sent" means Resend accepted it, not that it was delivered — check **Resend → Emails** for a bounce against that address (§2, *"Sent" means Resend accepted it*). Fix the address on *Trainees & sessions*, then use **Send now** in the console; a re-push skips them as already sent. |
+| Chaser emails bounce one copy every time | Older behaviour: the visible `To:` was the sending identity itself, so every chaser also delivered to `no-reply@`, which has no mailbox. It is now addressed to the first reply-to you enter instead, which doubles as your own copy — so always set one in the composer. |
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Trainee not in the sync | They typed a name that is not on the roster. The sync names who was skipped; add them to the roster or mark them present by hand. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |

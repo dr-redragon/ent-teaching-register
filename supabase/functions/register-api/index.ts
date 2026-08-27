@@ -587,9 +587,14 @@ async function handleChaseAbsences(db: SupabaseClient, body: Record<string, unkn
   if (!unique.length) return json({ error: "Nobody to send to" }, 400);
   if (unique.length > 200) return json({ error: "That is more than 200 recipients - split it up" }, 400);
 
-  // Everyone goes in BCC so recipients cannot see each other. The visible To:
-  // is the sending identity itself, which is the usual way to do this.
-  const visibleTo = fromEmail();
+  // Everyone goes in BCC so recipients cannot see each other, which still needs
+  // *some* visible To:. It must be an address that actually accepts mail: the
+  // To: recipient is delivered to like any other, so pointing it at the sending
+  // identity bounces every single send once that identity is a no-reply@ with no
+  // mailbox behind it (the usual case — a sending identity needs DNS, not a
+  // mailbox). Prefer the reply-to the organiser gave us, which is by definition
+  // a real inbox they read, and which doubles as their own copy of the chaser.
+  const visibleTo = replyTo[0] || fromEmail();
   const html = `<div style="font-family:Segoe UI,system-ui,sans-serif;font-size:15px;color:#15211c;line-height:1.55">` +
     bodyText.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("") +
     `</div>`;
@@ -610,7 +615,8 @@ async function handleChaseAbsences(db: SupabaseClient, body: Record<string, unkn
 
   return json({
     ok: true, sent, considered: unique.length, failures,
-    sandbox: usingSandboxSender(), from: visibleTo,
+    sandbox: usingSandboxSender(), from: fromEmail(),
+    visible_to: visibleTo,
     reply_to: replyTo,
   });
 }
