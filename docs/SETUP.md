@@ -119,6 +119,29 @@ up properly.
 
 No code changes and no redeploy — secrets are read on the next call.
 
+**If the domain already has mail on it (iCloud custom email, Google Workspace,
+Outlook), nothing above changes — you just don't touch your existing records.**
+`traineehq.com` is exactly this case: it already has MX records pointing at
+`mx01/mx02.mail.icloud.com` and a root `v=spf1 include:icloud.com ~all` TXT
+record for iCloud's own custom-domain mail, and Resend coexists with both
+untouched:
+
+- Resend's records land on a `send.traineehq.com` subdomain (its own MX + SPF
+  TXT) and on `resend._domainkey.traineehq.com` (its own DKIM selector) — none
+  of that is the root domain's MX or SPF, so iCloud mail keeps working exactly
+  as before, no changes to it required or wanted.
+- `CERT_FROM_EMAIL` can still be a clean root address like
+  `certificates@traineehq.com` even though the technical return-path lives on
+  the `send.` subdomain — DMARC passes on DKIM alignment with the root domain,
+  which is what Resend signs with.
+- Add every record Resend's dashboard shows, verbatim, in Cloudflare (§5's
+  panel) — grey-cloud (DNS only) any CNAME among them, since Cloudflare
+  proxies new CNAMEs by default and that breaks verification. TXT/MX records
+  aren't proxied either way.
+- If there's no `_dmarc.traineehq.com` TXT record yet, adding one (Resend
+  suggests one, or use `v=DMARC1; p=none;` for monitoring-only) is safe and
+  doesn't affect iCloud sending or receiving.
+
 **Volume.** Resend's free tier is 100 emails/day and 3,000/month, at 2 requests
 a second. A teaching day of thirty trainees is one feedback push plus thirty
 certificates, so a single day fits comfortably; two big days in one calendar day
