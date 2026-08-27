@@ -131,9 +131,11 @@ untouched:
   of that is the root domain's MX or SPF, so iCloud mail keeps working exactly
   as before, no changes to it required or wanted.
 - `CERT_FROM_EMAIL` can still be a clean root address like
-  `certificates@traineehq.com` even though the technical return-path lives on
+  `no-reply@traineehq.com` even though the technical return-path lives on
   the `send.` subdomain — DMARC passes on DKIM alignment with the root domain,
-  which is what Resend signs with.
+  which is what Resend signs with. A `no-reply@` sender doesn't need its own
+  mailbox; that's exactly what `CERT_REPLY_TO` (§2, above) is for — set it to
+  your real address so replies still reach you instead of bouncing.
 - Add every record Resend's dashboard shows, verbatim, in Cloudflare (§5's
   panel) — grey-cloud (DNS only) any CNAME among them, since Cloudflare
   proxies new CNAMEs by default and that breaks verification. TXT/MX records
@@ -450,7 +452,7 @@ regenerating session QR codes anyway, so what people scan is one hop shorter.
 
 You now own a domain, which is what §2 asks for to make certificate emails
 reach trainees. Verify `traineehq.com` in Resend and set `CERT_FROM_EMAIL` to
-something like `certificates@traineehq.com`. That is a separate set of DNS
+something like `no-reply@traineehq.com`. That is a separate set of DNS
 records (SPF, DKIM) in the same Cloudflare panel, and unrelated to the CNAME
 above — they coexist fine.
 
