@@ -25,10 +25,75 @@ the roster. To add someone:
 3. Give them the URL and that email/password. They sign in from the page
    itself — there's nothing else to configure per person.
 
+If you invite them instead of setting a password yourself, the invite email has
+to be set up first — see *Email links* immediately below. With the default
+template the invite link is usually dead by the time it arrives.
+
 Remove access the same way: delete the user from that same list. There's no
 separate "roles" concept — anyone with an account sees and can change
 everything in the register, same as before this existed, just no longer
 open to the world.
+
+### Email links: invites and password resets — READ THIS FIRST
+
+Both emailed links (the invite for a new organiser, and the reset link) must be
+set up in **Authentication → Emails → Templates**, or they will not work
+reliably. This is the one piece of configuration the code cannot do for itself.
+
+**The problem with the default templates.** They use `{{ .ConfirmationURL }}`,
+which points at Supabase's own `/auth/v1/verify` endpoint. That link is spent by
+whoever opens it *first* — and hospital mail systems (Microsoft Safe Links and
+similar) open every link in every email before the human ever sees it. The
+token is gone by the time the recipient clicks, Supabase bounces them back with
+"Email link is invalid or has expired", and they land on the sign-in screen.
+This is exactly why invites and resets stopped working: the auth logs for this
+project show `403 One-time token not found` on most `/verify` requests, each
+one preceded a second or two earlier by a `HEAD /verify` from a Microsoft
+scanning IP.
+
+**The fix** is to send a link that carries only a *hash* of the token and points
+at the register itself. A scanner that fetches that URL just downloads static
+HTML; nothing is spent. The token is used only when the page runs its
+`verifyOtp()` call in the recipient's browser.
+
+Set both templates to use this form. **Invite user:**
+
+```html
+<h2>You've been invited</h2>
+<p>You've been added as an organiser on the ENT Regional Teaching register.
+   Follow this link to set your password:</p>
+<p><a href="https://register.traineehq.com/index.html?token_hash={{ .TokenHash }}&type=invite">Set my password</a></p>
+```
+
+**Reset Password:**
+
+```html
+<h2>Reset your password</h2>
+<p>Follow this link to choose a new password for the ENT Regional Teaching
+   register:</p>
+<p><a href="https://register.traineehq.com/index.html?token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a></p>
+```
+
+The `type=` value differs between the two and matters — it decides whether the
+page says "create your password" or "choose a new password", and it is what the
+token is verified as. The domain is written out in full on purpose; `{{ .SiteURL }}`
+works too, but then the link silently depends on Site URL being right.
+
+**Also check, in Authentication → URL Configuration:**
+
+- **Site URL** is `https://register.traineehq.com`.
+- **Redirect URLs** includes `https://register.traineehq.com/index.html`. This
+  still matters: it is what the older link style falls back to, and the page
+  handles that style too.
+
+**What the register does with a link.** It accepts every shape Supabase can
+send — `?token_hash=`, the older `#access_token=`, and `?code=` — and shows the
+set-password screen whenever any of them produced a session, rather than relying
+on a single parameter surviving the trip. If a link cannot be used, it says so
+in plain words and offers a **Send me a new link** button, instead of dropping
+someone on a bare sign-in box with no explanation. An invited organiser whose
+link died can use that button too: a reset link sets the first password just as
+well as a replacement one.
 
 ### Forgotten passwords
 
@@ -37,12 +102,9 @@ need you to reset it for them from the dashboard. It emails a link (via
 Supabase Auth, not the Resend setup below) that brings them back to this same
 page to choose a new password.
 
-For that link to work, add the page's own URL to **Supabase dashboard →
-Authentication → URL Configuration → Redirect URLs** (the same URL you gave
-users in step 3 above, e.g. `https://register.traineehq.com/index.html`).
-Without it, Supabase silently drops the redirect and the emailed link sends
-people to whatever **Site URL** is set there instead. Supabase's own default
-email sending is fine for this — it's rate-limited but no `RESEND_API_KEY` or
+The link itself is set up in *Email links* above — do that first, or the
+reset email will keep arriving already spent. Supabase's own default email
+sending is fine for these — it's rate-limited but no `RESEND_API_KEY` or
 verified domain is needed, unlike the certificate/feedback emails below.
 
 ### Automatic sign-out after a day idle
@@ -561,6 +623,8 @@ above — they coexist fine.
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Two entries for the same trainee | They signed in as "my name is not on the list" with a different spelling from their roster entry, so the match missed. Delete the duplicate on the *Trainees & sessions* tab, then tick them present on the grid for that day. |
 | Signed out on its own, "24 hours without activity" | Working as intended — see §1. Sign in again; nothing is lost, the register is in the database. If it happens sooner than a day, that browser's clock may be wrong, since the check is against the device's own time. |
+| Invite or reset link opens the sign-in screen, not the password screen | The link was spent before it was clicked — almost always a mail scanner opening it first. Set both email templates to the `?token_hash=` form in §1; that is what stops it. The page now explains this and offers a new link rather than showing a bare sign-in box. |
+| "That link has already been used, or it has expired" | It genuinely has: they are single-use and short-lived, and clicking an older email in the thread will do it. Use **Send me a new link** on that screen. If it happens on every first click, the templates are still the default ones — see §1. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
 | Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
 | Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |

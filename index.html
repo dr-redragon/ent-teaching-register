@@ -787,6 +787,112 @@ async function signOutIdle(){
   showLogin(authNotice, true);
 }
 
+/* ---------------------------------------------------------- emailed auth links
+
+   Two things arrive by email: an invite for a new organiser, and a reset link
+   for a forgotten password. Both must land on the "choose a password" screen.
+
+   The links can reach us in four different shapes, and every one of them used
+   to have a way of failing silently:
+
+     ?token_hash=…&type=…   the token is only spent when this page calls
+                            verifyOtp() -- see the note on prefetching below
+     #access_token=…&type=… implicit flow; supabase-js consumes it for us
+     ?code=…                PKCE flow; supabase-js consumes it, but only if the
+                            matching verifier is in THIS browser's storage
+     ?error=…&error_code=…  Supabase bouncing a spent or expired link back
+
+   So the shape is read here, once, and the decision about what to show is made
+   from the outcome rather than from any single parameter. In particular the
+   set-password screen is shown whenever a session arrived from a link, not only
+   when a "type" parameter survived -- an invite whose type went missing must
+   still not drop a passwordless account straight into the register.
+
+   On prefetching: a link of the form /auth/v1/verify?token=… is spent by
+   whoever GETs it first, and hospital mail filters (Microsoft Safe Links and
+   friends) open every link in every email before the human does. That is why
+   these links were dying. ?token_hash= is the shape that survives that: a
+   scanner fetching this page just downloads static HTML, and the token is not
+   spent until the browser runs the verifyOtp() call below. docs/SETUP.md has
+   the email templates that produce it. */
+function readAuthLink(){
+  // Read synchronously, before the client exists: supabase-js strips the hash
+  // and the ?code= as soon as it processes one, so this is the only chance.
+  const q = new URLSearchParams(location.search);
+  const h = new URLSearchParams(location.hash.replace(/^#/,''));
+  const pick = (k) => q.get(k) || h.get(k) || '';
+  return {
+    tokenHash: pick('token_hash'),
+    code: q.get('code') || '',
+    accessToken: h.get('access_token') || '',
+    type: pick('type'),
+    errorCode: pick('error_code') || pick('error'),
+    errorText: pick('error_description'),
+    // Anything that means "this page load came from an emailed link".
+    get carriesToken(){ return !!(this.tokenHash || this.code || this.accessToken); },
+    get carriesError(){ return !!(this.errorCode || this.errorText); },
+  };
+}
+
+const AUTH_LINK_PARAMS = ['token_hash','type','code','error','error_code','error_description'];
+
+// Take the link apart once it has been used, so a reload cannot retry a token
+// that is now spent, and a handled error cannot reappear.
+function clearAuthLinkFromUrl(){
+  const q = new URLSearchParams(location.search);
+  AUTH_LINK_PARAMS.forEach(k=>q.delete(k));
+  const search = q.toString();
+  history.replaceState(null,'',location.pathname+(search?'?'+search:''));
+}
+
+function authLinkFailure(){
+  return 'That link has already been used, or it has expired. These links only work once — ' +
+    'and hospital mail systems often open them automatically first, which uses them up. ' +
+    'Send yourself a fresh one below; it sets your password whether the account is brand new or you have simply forgotten it.';
+}
+
+// Returns what the page should do next:
+//   {kind:'link'}  a session arrived from an emailed link -> set a password
+//   {kind:'dead'}  a link arrived but could not be used  -> say so, offer another
+//   {kind:'none'}  an ordinary page load                 -> session, or sign in
+async function resolveAuthLink(link){
+  let failed = link.carriesError;
+
+  if(!failed && link.tokenHash){
+    // Nothing is spent until this runs, which is the whole point of the shape.
+    const {error} = await sb.auth.verifyOtp({
+      token_hash: link.tokenHash,
+      type: link.type || 'recovery',
+    });
+    if(error) failed = true;
+  }
+
+  // Implicit and PKCE links are consumed by supabase-js itself, inside the
+  // initialisation that getSession() waits on. It reports a failure by simply
+  // not producing a session, so a link that carried a token and left us without
+  // one is a dead link -- not an ordinary logged-out visit.
+  const {data:{session}} = await sb.auth.getSession();
+  if(link.carriesToken && !session) failed = true;
+
+  if(failed) return {kind:'dead', invite: link.type==='invite'};
+  if(link.carriesToken) return {kind:'link', invite: link.type==='invite', session};
+  return {kind:'none', session};
+}
+
+// A dead link must never leave someone on a bare sign-in box wondering what
+// happened -- that is what "the link doesn't open anything" looks like from the
+// outside. Say what went wrong, and put the way out right next to it.
+function showLinkProblem(){
+  showLogin();
+  document.getElementById('loginError').innerHTML =
+    `<div class="notice warn" style="margin-bottom:14px">${escHtml(authLinkFailure())}</div>` +
+    `<button class="btn ghost" id="linkRetryBtn" style="width:100%;margin-bottom:16px">Send me a new link</button>`;
+  document.getElementById('linkRetryBtn').onclick=()=>{
+    document.getElementById('forgotEmail').value=document.getElementById('loginEmail').value.trim();
+    showForgot();
+  };
+}
+
 function hideAuthScreens(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('forgotScreen').style.display='none';
@@ -3011,11 +3117,9 @@ whenReady(async function(){
     showLogin('Could not load the sign-in library. Check your connection and reload.');
     return;
   }
-  // An invite or password-recovery link lands here with a token in the URL
-  // hash (#access_token=...&type=invite|recovery). supabase-js consumes and
-  // strips that hash as soon as it processes the session, so grab the type
-  // now, synchronously, before creating the client -- it's gone a moment later.
-  const linkType = new URLSearchParams(location.hash.replace(/^#/,'')).get('type');
+  // Read the emailed-link parameters before the client exists — supabase-js
+  // strips them the moment it processes one. See readAuthLink() above.
+  const authLink = readAuthLink();
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){
@@ -3025,23 +3129,25 @@ whenReady(async function(){
   }
 
   wireLogin();
-  // supabase-js exchanges the link's token for a session before the
-  // getSession() below runs. For a recovery link it also fires a
-  // PASSWORD_RECOVERY event; an invite link instead just signs the user in
-  // (invited users have no password yet to "recover"), so it wouldn't be
-  // caught by that event alone. Either way, show the set-password form
-  // instead of booting straight into the app with a session the user hasn't
-  // knowingly chosen -- and, for invites, hasn't set a password for at all.
-  let recovering = linkType==='invite' || linkType==='recovery';
-  if(recovering) showReset(linkType==='invite');
+
+  // Show the set-password form immediately for a link that carries a token, so
+  // the register never flashes up behind it while the token is being checked.
+  if(authLink.carriesToken) showReset(authLink.type==='invite');
+
+  // A backstop, not the mechanism: supabase-js fires PASSWORD_RECOVERY from a
+  // timer that lands after the await below, so nothing here may depend on it.
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(linkType==='invite'); }
+    if(event==='PASSWORD_RECOVERY') showReset(authLink.type==='invite');
     else if(event==='SIGNED_OUT') showLogin(authNotice, !!authNotice);
   });
-  const {data:{session}} = await sb.auth.getSession();
-  if(recovering){ /* showReset() already called above */ }
-  else if(session && ENT.idle.expired()){ await signOutIdle(); }
-  else if(session){ await bootApp(); }
+
+  const outcome = await resolveAuthLink(authLink);
+  clearAuthLinkFromUrl();
+
+  if(outcome.kind==='dead'){ showLinkProblem(); }
+  else if(outcome.kind==='link'){ showReset(outcome.invite); }
+  else if(outcome.session && ENT.idle.expired()){ await signOutIdle(); }
+  else if(outcome.session){ await bootApp(); }
   else { showLogin(); }
 });
 </script>
