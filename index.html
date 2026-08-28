@@ -84,6 +84,11 @@
   .btn.clay{background:var(--clay);color:#fff}
   .btn.clay:hover{filter:brightness(.94)}
   .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:7px}
+  /* Nothing said "disabled" before, so a button mid-send, or one locked after a
+     send, still looked ready to press. */
+  .btn:disabled{opacity:.55;cursor:default;filter:grayscale(.25)}
+  .btn.primary:disabled:hover{background:var(--moss)}
+  .btn.ghost:disabled:hover{border-color:var(--line);color:var(--ink)}
   /* a link and its "copy the link" twin, sitting together as one control */
   .linkgrp{display:flex;align-items:center;gap:6px}
   .iconbtn{appearance:none;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:7px;
@@ -94,8 +99,9 @@
   .grouphead{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
     color:var(--muted);margin:16px 0 8px}
   .grouphead:first-child{margin-top:0}
-  input,select{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
-  input:focus,select:focus{outline:2px solid var(--moss);outline-offset:-1px;border-color:var(--moss)}
+  input,select,textarea{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
+  textarea{resize:vertical;line-height:1.5}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--moss);outline-offset:-1px;border-color:var(--moss)}
   label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
   .field{margin-bottom:14px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -718,7 +724,7 @@
       <div class="field" style="margin-top:16px">
         <label class="fld">Replies go to (up to 4)</label>
         <div class="chase-replies" id="chaseReplies"></div>
-        <p class="helper">Any address works here — a personal Gmail or an NHS mailbox is fine. These are the only addresses a trainee's reply can reach.</p>
+        <p class="helper">Any address works here — a personal Gmail or an NHS mailbox is fine. These are the only addresses a trainee's reply can reach. Whatever you send with is kept for next time and travels with the register, so it is already filled in on any device you sign in on — change it here whenever you like.</p>
       </div>
 
       <div class="field">
@@ -735,7 +741,7 @@
       <div id="chaseResult"></div>
     </div>
     <div style="padding:14px 26px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn ghost" onclick="hideChaseModal()">Cancel</button>
+      <button class="btn ghost" id="chaseCancel" onclick="hideChaseModal()">Cancel</button>
       <button class="btn primary" id="chaseSend">Send</button>
     </div>
   </div>
@@ -956,7 +962,8 @@ async function saveDB(){
      sessions:[{id,month:'2026-01',title}],
      attendance:{ "traineeId|sessionId": {grade:'ST6'} | true },  // true = legacy present
      excused:[{id,trainee,session,reason,ts}],
-     status:[{id,trainee,type,start:'2026-02',end:'2026-05'|null}]
+     status:[{id,trainee,type,start:'2026-02',end:'2026-05'|null}],
+     chaseReplyTo:['someone@nhs.net']   // reply-to for the absence chaser, kept between sends
    }
    Grade is captured per check-in (it changes each rotation), not on the trainee.
    Status semantics for eligibility of a session month M (start/end are 'YYYY-MM' or null):
@@ -1729,7 +1736,20 @@ function defaultChaseBody(s){
     'Many thanks,\nENT Regional Teaching';
 }
 
+// The reply-to addresses are a setting, not a per-email decision: the same
+// people answer every chaser. They live in the register itself rather than in
+// this browser, so they are already filled in on whatever device the organiser
+// next signs in on -- and they stay editable, since what gets sent, and kept, is
+// whatever the boxes hold at that moment.
+//
+// normaliseDB() guarantees the array exists, so an empty one means "cleared",
+// not "never set" -- emptying the boxes on one device must stick on the others.
 function savedReplyAddresses(){
+  return (DB && Array.isArray(DB.chaseReplyTo)) ? DB.chaseReplyTo : legacyReplyAddresses();
+}
+
+// Where they used to be kept, before they travelled with the register.
+function legacyReplyAddresses(){
   try{ const v=JSON.parse(localStorage.getItem(CHASE_REPLIES_KEY)); if(Array.isArray(v)) return v; }catch(e){}
   return [];
 }
@@ -1759,12 +1779,13 @@ function showChaseModal(s){
 
   document.getElementById('chaseSubject').value='Attendance query — '+s.title+' ('+fmtMonth(s.month)+')';
   document.getElementById('chaseBodyText').value=defaultChaseBody(s);
-  document.getElementById('chaseResult').innerHTML='';
+  setChaseResult('', '');
   document.getElementById('chaseWarn').innerHTML='';
 
   const send=document.getElementById('chaseSend');
   send.disabled=false; send.textContent='Send';
   send.onclick=()=>sendChase(s);
+  document.getElementById('chaseCancel').textContent='Cancel';   // may say "Done" from a previous send
 
   ['chaseSubject','chaseBodyText'].forEach(id=>document.getElementById(id).oninput=renderChasePreview);
   document.getElementById('chaseReplies').oninput=renderChasePreview;
@@ -1775,6 +1796,15 @@ function showChaseModal(s){
 }
 
 function hideChaseModal(){ document.getElementById('chaseModal').classList.remove('show'); }
+
+// The composer is taller than the modal, so the result sits below the fold: set
+// it and it may never be seen, which is how sending could feel like nothing
+// happened. Every message this window shows goes through here and is scrolled to.
+function setChaseResult(kind, html){
+  const el=document.getElementById('chaseResult');
+  el.innerHTML = html ? '<div class="notice '+kind+'" style="margin-top:12px">'+html+'</div>' : '';
+  if(html) el.scrollIntoView({block:'nearest', behavior:'smooth'});
+}
 
 function chaseReplyValues(){
   return [...document.querySelectorAll('.chase-reply')].map(i=>i.value.trim()).filter(Boolean);
@@ -1810,34 +1840,57 @@ async function sendChase(s){
   const subject=document.getElementById('chaseSubject').value.trim();
   const body=document.getElementById('chaseBodyText').value.trim();
   const replies=chaseReplyValues();
-  const rEl=document.getElementById('chaseResult');
 
-  if(!subject) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">Give the email a subject.</div>';
-  if(!body) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">The message is empty.</div>';
+  if(!subject) return setChaseResult('bad','Give the email a subject.');
+  if(!body) return setChaseResult('bad','The message is empty.');
   const badReply=replies.find(r=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r));
-  if(badReply) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">“'+escHtml(badReply)+'” is not a valid reply address.</div>';
-  if(!chaseTargets.length) return rEl.innerHTML='<div class="notice bad" style="margin-top:12px">Nobody to send to.</div>';
-
-  try{ localStorage.setItem(CHASE_REPLIES_KEY, JSON.stringify(replies)); }catch(e){}
+  if(badReply) return setChaseResult('bad','“'+escHtml(badReply)+'” is not a valid reply address.');
+  if(!chaseTargets.length) return setChaseResult('bad','Nobody to send to.');
 
   const btn=document.getElementById('chaseSend');
   btn.disabled=true; btn.textContent='Sending…';
+  setChaseResult('info','Sending…');
   try{
     const res=await callApi('chase-absences',{
       recipients: chaseTargets.map(t=>t.email.trim()),
       subject, body, reply_to: replies,
     });
     const fails=res.failures||[];
-    let msg='Sent to '+res.sent+' of '+res.considered+', all in BCC.';
-    if(fails.length) msg+=' '+fails.length+' batch'+(fails.length===1?'':'es')+' failed: '+
-      escHtml(fails.map(f=>f.why).join(' '));
-    else if(res.sandbox) msg+=' <strong>But the sender is still Resend’s test address, so only the Resend account holder actually received it.</strong>';
-    rEl.innerHTML='<div class="notice '+((fails.length||res.sandbox)?'warn':'info')+'" style="margin-top:12px">'+msg+'</div>';
-    if(!fails.length) toast('Chaser sent to '+res.sent);
+
+    // Remember the addresses that were actually sent with, not merely typed --
+    // and only once the send has come back, so a failed attempt doesn't quietly
+    // change the setting. Kept in the register, so any device gets them next time.
+    if(JSON.stringify(replies)!==JSON.stringify(savedReplyAddresses())){
+      DB.chaseReplyTo=replies;
+      try{ localStorage.removeItem(CHASE_REPLIES_KEY); }catch(e){}   // superseded
+      saveDB();
+    }
+
+    if(fails.length){
+      setChaseResult('warn','<strong>Sent to '+res.sent+' of '+res.considered+'</strong>, all in BCC. '+
+        fails.length+' batch'+(fails.length===1?'':'es')+' failed: '+escHtml(fails.map(f=>f.why).join(' '))+
+        ' Fix the problem and press Send again — the ones that already went will get a second copy.');
+      btn.disabled=false; btn.textContent='Send';
+      return;
+    }
+
+    // Sent, and nothing failed. Say so plainly and close the door on a second
+    // press: this goes to every absentee at once, so an accidental double-send
+    // is a mailshot, not a duplicate row.
+    const to = res.sent+' trainee'+(res.sent===1?'':'s');
+    setChaseResult(res.sandbox?'warn':'info',
+      '<strong>✓ Email sent</strong> — the chaser has gone to '+to+', all in BCC.<br>'+
+      (replies.length? 'Replies come to '+escHtml(replies.join(', '))+'.'
+                     : 'Replies go to the sending address, since no reply address was set.')+
+      (res.sandbox? '<br><strong>But the sender is still Resend’s test address, so only the Resend account holder '+
+                    'actually received it.</strong>' : ''));
+    btn.textContent='Sent ✓';                       // stays disabled
+    document.getElementById('chaseCancel').textContent='Done';
+    toast('Chaser sent to '+res.sent);
   }catch(err){
-    rEl.innerHTML='<div class="notice bad" style="margin-top:12px">'+escHtml(err.message)+'</div>';
+    setChaseResult('bad','<strong>Not sent.</strong> '+escHtml(err.message));
+    btn.disabled=false; btn.textContent='Send';
   }
-  btn.disabled=false; btn.textContent='Send';
 }
 
 /* One "copy this link" control, used next to the links it belongs to rather
@@ -2881,6 +2934,9 @@ function seedData(){
 // authenticated role.
 function normaliseDB(db){
   db.trainees??=[]; db.sessions??=[]; db.attendance??={}; db.excused??=[]; db.status??=[];
+  // Chaser reply-to addresses used to be kept per browser; take them over on the
+  // first load after that changed, so nobody has to type them again.
+  if(!Array.isArray(db.chaseReplyTo)) db.chaseReplyTo = legacyReplyAddresses();
   // migrate legacy 'idt' (single transfer type) to idt_out
   db.status.forEach(s=>{ if(s.type==='idt') s.type='idt_out'; });
   return db;

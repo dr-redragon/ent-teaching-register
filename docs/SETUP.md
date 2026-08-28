@@ -342,11 +342,26 @@ you:
 - **who is being left out because we hold no email for them**, by name, so you
   can add those on the *Trainees & sessions* tab and reopen;
 - up to four reply-to addresses (a personal Gmail is fine here — a reply-to is
-  not a sender), remembered for next time;
+  not a sender);
 - a live preview of the subject, headers and body.
 
 The subject and body are prefilled and fully editable. Nothing is sent until you
 press **Send**.
+
+**The reply-to addresses are remembered.** Whatever you send with is kept on the
+register itself, not in the browser, so it is already filled in next time — on
+whatever device you next sign in on, not just the one you sent from. They stay
+editable: change or clear a box and press **Send**, and that is what is kept
+from then on. They are only saved once a send has actually gone through, so a
+failed attempt never quietly changes the setting.
+
+**When you press Send you get told what happened**, in a note above the buttons:
+*Email sent — the chaser has gone to 12 trainees, all in BCC*, and which
+addresses replies will come to. The **Send** button then reads *Sent ✓* and
+stops responding, and **Cancel** becomes **Done** — this goes to every absentee
+at once, so a second press would be a second mailshot, not a harmless repeat.
+Reopening the composer resets it. If some batches failed, the note says how many
+got through and why the rest didn't, and Send stays available to try again.
 
 ### Trainee grades
 
