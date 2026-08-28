@@ -198,9 +198,13 @@ async function boot() {
     return fail('Could not load the sign-in library. Check your connection and reload.');
   }
   sb = supabase.createClient(ENT.SUPABASE_URL, ENT.SUPABASE_ANON_KEY);
+  // A session left signed in and untouched for a day is ended rather than
+  // resumed -- see ENT.idle in assets/config.js. The clock is shared with the
+  // register and the session console, so activity on any of them counts here.
   const { data: { session } } = await sb.auth.getSession();
   el('loading').style.display = 'none';
-  if (session) { authToken = session.access_token; await load(); }
+  if (session && ENT.idle.expired()) { await signOutIdle(); }
+  else if (session) { authToken = session.access_token; await load(); }
   else { el('unlock').style.display = 'block'; }
 
   el('unlockBtn').onclick = async () => {
@@ -214,9 +218,23 @@ async function boot() {
       return;
     }
     authToken = data.session.access_token;
+    el('unlockError').innerHTML = '';
     el('unlock').style.display = 'none';
     await load();
   };
+}
+
+// The idle clock ran out: put the editor away and ask for the password again.
+// Local scope only, so the organiser stays signed in on their other devices.
+// An unsaved draft does not survive this — a day of not touching it is long
+// enough that re-reading the saved form is the right thing to come back to.
+async function signOutIdle() {
+  ENT.idle.clear();
+  authToken = '';
+  try { await sb.auth.signOut({ scope: 'local' }); } catch (e) { /* offline: the lock below still holds */ }
+  el('editor').style.display = 'none';
+  el('unlock').style.display = 'block';
+  el('unlockError').innerHTML = `<div class="notice info">${ENT.esc(ENT.idle.notice)}</div>`;
 }
 
 // Reading a form needs no privileged access: sessions.form and form_templates
@@ -243,6 +261,7 @@ async function load() {
     const active = SESSION_ID ? (sess.form || templateForm) : templateForm;
     form = deepCopy(scope === 'template' ? templateForm : active);
 
+    ENT.idle.watch(signOutIdle);       // start the day-long inactivity clock
     el('editor').style.display = 'block';
     renderScope(); renderAll();
   } catch (err) { fail(err.message); }

@@ -287,8 +287,15 @@ async function boot() {
 
   el('loading').style.display = 'none';
 
+  // A session left signed in and untouched for a day is ended rather than
+  // resumed -- see ENT.idle in assets/config.js. The clock is shared with the
+  // register, so time spent working there counts as activity here too.
   const { data: { session: authSession } } = await sb.auth.getSession();
-  if (authSession) { authToken = authSession.access_token; await open(); }
+  // Held, because signOutIdle() clears the stamp -- asking ENT.idle again below
+  // would say "not expired" and put the Log out button back on a locked page.
+  const idleOut = !!authSession && ENT.idle.expired();
+  if (idleOut) { await signOutIdle(); }
+  else if (authSession) { authToken = authSession.access_token; await open(); }
   else { el('unlock').style.display = 'block'; }
 
   el('unlockBtn').onclick = async () => {
@@ -307,6 +314,7 @@ async function boot() {
       return;
     }
     authToken = data.session.access_token;
+    el('unlockError').innerHTML = '';
     el('unlock').style.display = 'none';
     el('logoutBtn').style.display = 'inline-block';
     await open();
@@ -316,10 +324,24 @@ async function boot() {
     await sb.auth.signOut();
     location.reload();
   };
-  if (authSession) el('logoutBtn').style.display = 'inline-block';
+  if (authSession && !idleOut) el('logoutBtn').style.display = 'inline-block';
+}
+
+// The idle clock ran out: put the console away and ask for the password again.
+// Local scope only — this browser walking away is no reason to sign the
+// organiser out on their phone.
+async function signOutIdle() {
+  ENT.idle.clear();
+  authToken = '';
+  try { await sb.auth.signOut({ scope: 'local' }); } catch (e) { /* offline: the lock below still holds */ }
+  el('console').style.display = 'none';
+  el('logoutBtn').style.display = 'none';
+  el('unlock').style.display = 'block';
+  el('unlockError').innerHTML = `<div class="notice info">${ENT.esc(ENT.idle.notice)}</div>`;
 }
 
 async function open() {
+  ENT.idle.watch(signOutIdle);       // start the day-long inactivity clock
   el('console').style.display = 'block';
   el('title').textContent = session.title;
   el('subtitle').textContent = ENT.fmtDate(session.session_date) + (session.location ? ' · ' + session.location : '');

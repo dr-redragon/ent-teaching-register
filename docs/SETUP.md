@@ -45,6 +45,42 @@ people to whatever **Site URL** is set there instead. Supabase's own default
 email sending is fine for this — it's rate-limited but no `RESEND_API_KEY` or
 verified domain is needed, unlike the certificate/feedback emails below.
 
+### Automatic sign-out after a day idle
+
+A Supabase session normally lasts until somebody signs out: the token that
+keeps it alive never expires on its own. On a shared ward computer that means a
+register left open on Tuesday is still signed in on Wednesday. So the organiser
+pages run their own clock: **24 hours with nothing touched and the next check
+signs that browser out**, putting the login screen back with a line saying why.
+
+- **Any of the organiser pages counts.** The register, the session console and
+  the form editor share one stamp in the browser, so an hour spent in the
+  console keeps the register tab alive too.
+- **Only that browser.** The sign-out is scoped locally, so an organiser signed
+  in on their own phone stays signed in there. The **Log out** button is
+  unchanged and still signs out everywhere.
+- **A tab left open logs out too**, not just one that gets reopened — the page
+  checks once a minute, and again whenever you come back to the tab, which is
+  what catches a laptop that was asleep.
+
+To change the period, edit `IDLE_MS` in `assets/config.js` — it is the single
+place the value lives, and the wording on the login screen reads the number
+from it. Set it to `2 * 60 * 60 * 1000` for two hours, and so on.
+
+**What this is not.** It runs in the page, so it protects against a browser
+left logged in, not against someone with the device and the will to use the
+developer console: the register's own offline copy stays cached in that browser
+either way. That cache is deliberately left alone, because it can hold changes
+that never reached the database (the "Saved locally — cloud sync failed" case),
+and throwing it away on sign-out would lose them.
+
+Supabase can enforce this server-side instead, under **Authentication →
+Sessions** (*Inactivity timeout*, *Time-box user sessions*), which no browser
+can talk its way out of. Those settings are Pro plan and up, and this project is
+on the free plan, which is why the clock is in the page. If the project is ever
+upgraded, setting the inactivity timeout there is strictly better and the
+in-page clock can go.
+
 ### Why this matters, precisely
 
 Before this, `register_store` (the table holding the entire register — every
@@ -509,6 +545,7 @@ above — they coexist fine.
 | Emails only reach you | The Resend sandbox sender — `CERT_FROM_EMAIL` is unset or still `@resend.dev`. Verify a domain (§2). The Check-in tab and session console both flag this explicitly. |
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Two entries for the same trainee | They signed in as "my name is not on the list" with a different spelling from their roster entry, so the match missed. Delete the duplicate on the *Trainees & sessions* tab, then tick them present on the grid for that day. |
+| Signed out on its own, "24 hours without activity" | Working as intended — see §1. Sign in again; nothing is lost, the register is in the database. If it happens sooner than a day, that browser's clock may be wrong, since the check is against the device's own time. |
 | Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
 | Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
 | Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |

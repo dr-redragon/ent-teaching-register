@@ -287,6 +287,8 @@
   body.kiosk nav,body.kiosk header .cohort-pill{display:none}
   .kiosk-card{max-width:460px;margin:40px auto;padding:0 16px}
   .login-error{background:#fbeee9;border:1px solid #e0b09a;color:#9c3d1c;border-radius:9px;padding:10px 13px;font-size:13.5px;margin-bottom:14px}
+  /* An automatic sign-out is not a failure, so it doesn't get the red box. */
+  .login-note{background:#eef2ea;border:1px solid #cfdcd2;color:var(--moss-deep);border-radius:9px;padding:10px 13px;font-size:13.5px;margin-bottom:14px}
   .att-list{border:1px solid var(--line);border-radius:10px;max-height:280px;overflow:auto;margin-top:8px}
   .att-row{display:grid;grid-template-columns:22px 1.4fr auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid #ece8db;font-size:13px}
   .att-row:last-child{border-bottom:none}
@@ -742,6 +744,7 @@
 <div id="cellTip"></div>
 <div id="cellPop" role="dialog" aria-label="Attendance for this session"></div>
 
+<script src="assets/config.js"></script>
 <script>
 /* ============================================================
    ENT Teaching Register — local-first attendance tracker
@@ -762,18 +765,37 @@ let sb = null;    // created at boot, once the deferred supabase-js has run
    two narrow RPCs below, and the kiosk view further down this file uses
    the same RPCs rather than loading the organiser's data at all.
    ============================================================ */
+// Set when the app signs itself out rather than the organiser doing it, so the
+// login screen can say why. Read by showLogin() via the SIGNED_OUT handler too,
+// since supabase-js fires that event as well.
+let authNotice = '';
+
+// The idle clock ran out. Ends the session in this browser only -- the organiser
+// may well be signed in on their own phone, and a walked-away-from desktop is
+// not a reason to sign them out of that. The register's cached offline copy is
+// deliberately left alone: it can hold changes that never reached the database.
+async function signOutIdle(){
+  authNotice = ENT.idle.notice;
+  ENT.idle.clear();
+  try{ await sb.auth.signOut({scope:'local'}); }catch(e){ /* offline: the screen below still locks */ }
+  showLogin(authNotice, true);
+}
+
 function hideAuthScreens(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('forgotScreen').style.display='none';
   document.getElementById('resetScreen').style.display='none';
 }
-function showLogin(message){
+// `note` styles the message as information rather than an error — used when the
+// app signed the organiser out itself, which is not something they got wrong.
+function showLogin(message, note){
   hideAuthScreens();
   document.getElementById('loginScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
-  document.getElementById('loginError').innerHTML = message? `<div class="login-error">${escHtml(message)}</div>` : '';
+  document.getElementById('loginError').innerHTML =
+    message? `<div class="${note?'login-note':'login-error'}">${escHtml(message)}</div>` : '';
 }
 function showForgot(){
   hideAuthScreens();
@@ -2885,6 +2907,8 @@ function wireOnce(){
 // network round trip, which is most of what "going back is slow" was.
 async function bootApp(){
   hideLogin();
+  authNotice = '';                     // whatever put us on the login screen last is history
+  ENT.idle.watch(signOutIdle);         // start (or restart) the day-long inactivity clock
   const cached = cachedDB();
   dbReady = remoteDB();                // starts now; deliberately not awaited yet
 
@@ -2956,10 +2980,11 @@ whenReady(async function(){
   if(recovering) showReset(linkType==='invite');
   sb.auth.onAuthStateChange((event)=>{
     if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(linkType==='invite'); }
-    else if(event==='SIGNED_OUT') showLogin();
+    else if(event==='SIGNED_OUT') showLogin(authNotice, !!authNotice);
   });
   const {data:{session}} = await sb.auth.getSession();
   if(recovering){ /* showReset() already called above */ }
+  else if(session && ENT.idle.expired()){ await signOutIdle(); }
   else if(session){ await bootApp(); }
   else { showLogin(); }
 });

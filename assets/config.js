@@ -1,6 +1,7 @@
-/* Shared Supabase configuration for the standalone pages (check-in, feedback,
-   organiser console). index.html keeps its own copy of these constants so the
-   register still works when opened as a plain file. */
+/* Shared Supabase configuration and helpers for every page. index.html keeps
+   its own copy of the two constants, so its data path stands alone, but it
+   loads this file too for the idle sign-out clock below — one implementation,
+   one stamp, shared by every page that has a login to end. */
 window.ENT = (function () {
   const SUPABASE_URL = 'https://ecyhvubwcqqghumnyxuu.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjeWh2dWJ3Y3FxZ2h1bW55eHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzQ3NzEsImV4cCI6MjA5NzE1MDc3MX0.0aI5Efr6h5UzUY3V-eJz1vihmntIMKqG3-_QMXq4cxY';
@@ -64,6 +65,90 @@ window.ENT = (function () {
     return await res.json();
   }
 
+  /* ---------------------------------------------------------------- idle sign-out
+
+     A Supabase session lasts until it is signed out: the refresh token never
+     expires on its own, and the server-side "Inactivity timeout" that would end
+     it is a paid-plan feature. So the organiser pages keep their own clock. If
+     nothing is touched for IDLE_MS, the next check signs this browser out and
+     puts the login screen back.
+
+     The stamp lives in localStorage, so every organiser page shares one clock:
+     working in the session console keeps the register tab alive, and vice
+     versa. Trainee-facing pages never call any of this — they have no login to
+     end.
+
+     What it is and isn't: it stops a logged-in browser left on a ward computer
+     from still being logged in tomorrow. It is not a security boundary — it
+     runs in the page, and the register's own offline copy stays cached in this
+     browser either way (that copy can hold changes that never reached the
+     database, so signing out must not throw it away). */
+  const IDLE_KEY = 'ent-active-since';
+  const IDLE_MS = 24 * 60 * 60 * 1000;        // a day
+  const IDLE_TICK = 60 * 1000;                // check, and at most write, once a minute
+
+  const idleStamp = () => {
+    try { return Number(localStorage.getItem(IDLE_KEY)) || 0; } catch (e) { return 0; }
+  };
+  const idleClear = () => { try { localStorage.removeItem(IDLE_KEY); } catch (e) {} };
+
+  // Throttled: this runs on every click and keystroke, and a localStorage write
+  // per keystroke is both wasteful and a synchronous disk touch.
+  function idleTouch(force) {
+    const last = idleStamp();
+    const now = Date.now();
+    if (!force && last && now - last < IDLE_TICK) return;
+    try { localStorage.setItem(IDLE_KEY, String(now)); } catch (e) {}
+  }
+
+  // No stamp means no clock has been started (a browser that has never signed
+  // in, or one signed out cleanly) — that is not an expiry.
+  function idleExpired() {
+    const last = idleStamp();
+    return last > 0 && Date.now() - last > IDLE_MS;
+  }
+
+  // Starts the clock for a page that is signed in. onExpire() is called once,
+  // and only once, when a whole IDLE_MS has passed without the page being
+  // touched. Checked on a timer and again whenever the tab becomes visible,
+  // because a hidden tab's timers are throttled and a sleeping laptop's are
+  // stopped altogether — coming back to it is when the answer has changed.
+  let idleWatching = false;
+  function idleWatch(onExpire) {
+    if (idleWatching) return;                 // one clock per page, however often this is called
+    idleWatching = true;
+    idleTouch(true);
+
+    let done = false;
+    let timer = 0;
+    const check = () => {
+      if (done || !idleExpired()) return;
+      done = true;
+      clearInterval(timer);
+      idleClear();
+      onExpire();
+    };
+    const bump = () => { if (!done) idleTouch(false); };
+
+    ['pointerdown', 'keydown'].forEach((type) =>
+      document.addEventListener(type, bump, { passive: true, capture: true }));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      check();                                // may already be over the line
+      bump();                                 // otherwise, coming back to the tab counts as activity
+    });
+    timer = setInterval(check, IDLE_TICK);
+  }
+
+  const idle = {
+    hours: IDLE_MS / (60 * 60 * 1000),
+    expired: idleExpired,
+    clear: idleClear,
+    watch: idleWatch,
+    // The one wording, so all three organiser pages say the same thing.
+    notice: 'Signed out after ' + (IDLE_MS / (60 * 60 * 1000)) + ' hours without activity. Sign in again to carry on.',
+  };
+
   const esc = (v) => String(v ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -87,5 +172,5 @@ window.ENT = (function () {
     { key: 'recommend',    text: 'I would recommend this session to a colleague' },
   ];
 
-  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, rpc, esc, fmtDate, GRADES, QUESTIONS };
+  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, rpc, idle, esc, fmtDate, GRADES, QUESTIONS };
 })();
