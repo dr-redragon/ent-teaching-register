@@ -53,6 +53,24 @@ async function organiserOk(req: Request): Promise<boolean> {
   return !error && !!data?.user;
 }
 
+// Administrator-only actions (managing organiser accounts) are gated twice: the
+// caller must be a signed-in user, as above, AND hold a row in app_admins.
+// Hiding the tab in the browser is a convenience for the person looking at it;
+// this is the boundary that actually decides who can add or remove an account.
+interface Caller { id: string; email: string }
+async function adminCaller(req: Request): Promise<Caller | null> {
+  const auth = req.headers.get("authorization") || "";
+  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  const db = service();
+  const { data, error } = await db.auth.getUser(token);
+  if (error || !data?.user) return null;
+  const { data: row } = await db.from("app_admins")
+    .select("user_id").eq("user_id", data.user.id).maybeSingle();
+  if (!row) return null;
+  return { id: data.user.id, email: data.user.email ?? "" };
+}
+
 const cleanEmail = (v: unknown) => String(v ?? "").trim().toLowerCase();
 const cleanText = (v: unknown, max = 300) => String(v ?? "").trim().slice(0, max);
 const esc = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -661,11 +679,167 @@ async function handleCertificatePreview(db: SupabaseClient, body: Record<string,
   });
 }
 
+/* ------------------------------------------------------------ organiser accounts */
+
+// GoTrue's own wording is written for developers ("A user with this email
+// address has already been registered"); these are read by whoever is running
+// the teaching programme.
+function friendlyAuthError(message: string): string {
+  const m = String(message ?? "");
+  if (/already.*(registered|exists)/i.test(m)) return "There is already an account with that email address.";
+  if (/password/i.test(m) && /short|least|weak/i.test(m)) return "That password is too short — use at least 8 characters.";
+  if (/rate limit|too many/i.test(m)) return "Too many requests in a row — wait a minute and try again.";
+  return m || "Something went wrong";
+}
+
+// The whole account list, with an is_admin flag. auth.users is never exposed to
+// the browser directly; this is the only way the register sees it, and only
+// administrators reach it.
+async function handleAdminListUsers(db: SupabaseClient) {
+  const users: Record<string, unknown>[] = [];
+  // listUsers() is paged. Ten pages of 200 is far more than this register will
+  // ever hold, and it stops as soon as a short page comes back.
+  for (let page = 1; page <= 10; page++) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) return json({ error: error.message }, 500);
+    const batch = data?.users ?? [];
+    users.push(...(batch as unknown as Record<string, unknown>[]));
+    if (batch.length < 200) break;
+  }
+
+  const { data: admins } = await db.from("app_admins").select("user_id");
+  const adminIds = new Set((admins ?? []).map((a: { user_id: string }) => a.user_id));
+
+  const list = users.map((u) => ({
+    id: String(u.id),
+    email: String(u.email ?? ""),
+    is_admin: adminIds.has(String(u.id)),
+    created_at: u.created_at ?? null,
+    last_sign_in_at: u.last_sign_in_at ?? null,
+    invited_at: u.invited_at ?? null,
+    // An invited account that has never followed its link has no confirmed
+    // address and no password yet -- worth showing, since it explains why the
+    // person says they cannot sign in.
+    confirmed: !!(u.email_confirmed_at || u.confirmed_at),
+  })).sort((a, b) => a.email.localeCompare(b.email));
+
+  return json({ ok: true, users: list });
+}
+
+// Two ways to add someone, because both come up: email them an invite and let
+// them choose their own password, or set one now and tell them what it is
+// (useful when the address cannot receive mail from Supabase).
+async function handleAdminCreateUser(db: SupabaseClient, body: Record<string, unknown>, caller: Caller) {
+  const email = cleanEmail(body.email);
+  if (!isEmail(email)) return json({ error: "That does not look like a valid email address" }, 400);
+  const password = String(body.password ?? "");
+  if (password && password.length < 8) return json({ error: "A password needs at least 8 characters" }, 400);
+
+  let userId: string | null = null;
+  if (password) {
+    const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true });
+    if (error) return json({ error: friendlyAuthError(error.message) }, 400);
+    userId = data?.user?.id ?? null;
+  } else {
+    const { data, error } = await db.auth.admin.inviteUserByEmail(email, { redirectTo: `${APP_BASE_URL}/index.html` });
+    if (error) return json({ error: friendlyAuthError(error.message) }, 400);
+    userId = data?.user?.id ?? null;
+  }
+
+  if (body.admin === true && userId) {
+    const { error } = await db.from("app_admins").upsert({ user_id: userId, email, granted_by: caller.id });
+    if (error) return json({ error: "The account was created, but granting administrator access failed" }, 500);
+  }
+  return json({ ok: true, invited: !password, user_id: userId });
+}
+
+async function handleAdminUpdateUser(db: SupabaseClient, body: Record<string, unknown>, caller: Caller) {
+  const userId = cleanText(body.user_id, 64);
+  if (!userId) return json({ error: "Which account?" }, 400);
+  const { data: found, error: findErr } = await db.auth.admin.getUserById(userId);
+  if (findErr || !found?.user) return json({ error: "That account no longer exists" }, 404);
+
+  const attrs: Record<string, unknown> = {};
+  let newEmail: string | null = null;
+  if (body.email !== undefined) {
+    const email = cleanEmail(body.email);
+    if (!isEmail(email)) return json({ error: "That does not look like a valid email address" }, 400);
+    if (email !== cleanEmail(found.user.email)) {
+      // email_confirm keeps the account usable straight away: without it the
+      // address sits unconfirmed until a link is followed, and the person is
+      // locked out of a register they could use a moment ago.
+      attrs.email = email;
+      attrs.email_confirm = true;
+      newEmail = email;
+    }
+  }
+  if (body.password !== undefined && String(body.password)) {
+    const pw = String(body.password);
+    if (pw.length < 8) return json({ error: "A password needs at least 8 characters" }, 400);
+    attrs.password = pw;
+  }
+  if (Object.keys(attrs).length) {
+    const { error } = await db.auth.admin.updateUserById(userId, attrs);
+    if (error) return json({ error: friendlyAuthError(error.message) }, 400);
+  }
+
+  if (body.admin !== undefined) {
+    const wantAdmin = body.admin === true;
+    // Removing your own administrator access is the one change that cannot be
+    // undone from inside the app, so it is refused outright rather than warned
+    // about. Another administrator can still do it for you.
+    if (!wantAdmin && userId === caller.id) {
+      return json({ error: "You cannot remove your own administrator access — ask another administrator to do it." }, 400);
+    }
+    if (wantAdmin) {
+      const email = newEmail ?? cleanEmail(found.user.email);
+      const { error } = await db.from("app_admins").upsert({ user_id: userId, email, granted_by: caller.id });
+      if (error) return json({ error: "Could not grant administrator access" }, 500);
+    } else {
+      const { error } = await db.from("app_admins").delete().eq("user_id", userId);
+      if (error) return json({ error: "Could not remove administrator access" }, 500);
+    }
+  } else if (newEmail) {
+    await db.from("app_admins").update({ email: newEmail }).eq("user_id", userId);
+  }
+  return json({ ok: true });
+}
+
+async function handleAdminDeleteUser(db: SupabaseClient, body: Record<string, unknown>, caller: Caller) {
+  const userId = cleanText(body.user_id, 64);
+  if (!userId) return json({ error: "Which account?" }, 400);
+  // Also what stops the last administrator being deleted: only an administrator
+  // gets this far, and they cannot be the target.
+  if (userId === caller.id) return json({ error: "You cannot delete your own account." }, 400);
+  const { error } = await db.auth.admin.deleteUser(userId);
+  if (error) return json({ error: friendlyAuthError(error.message) }, 400);
+  // app_admins cascades on the auth.users delete; this is belt and braces.
+  await db.from("app_admins").delete().eq("user_id", userId);
+  return json({ ok: true });
+}
+
+// The same email the sign-in page's "Forgot password?" sends, triggered on
+// someone else's behalf -- so an administrator never has to know or invent a
+// password for them.
+async function handleAdminSendReset(db: SupabaseClient, body: Record<string, unknown>) {
+  const email = cleanEmail(body.email);
+  if (!isEmail(email)) return json({ error: "That does not look like a valid email address" }, 400);
+  const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: `${APP_BASE_URL}/index.html` });
+  if (error) return json({ error: friendlyAuthError(error.message) }, 400);
+  return json({ ok: true });
+}
+
 /* --------------------------------------------------------------------- router */
 
 const ORGANISER_ACTIONS = new Set([
   "create-session", "session-status", "send-certificate", "email-feedback-link", "certificate-preview",
   "chase-absences", "get-form", "save-form", "mark-attended", "reset-feedback",
+]);
+
+// A stricter tier than the above: signing in is not enough, the caller has to be
+// an administrator too.
+const ADMIN_ACTIONS = new Set([
+  "admin-list-users", "admin-create-user", "admin-update-user", "admin-delete-user", "admin-send-reset",
 ]);
 
 Deno.serve(async (req) => {
@@ -680,7 +854,14 @@ Deno.serve(async (req) => {
   }
 
   const action = String(body.action ?? "");
-  if (ORGANISER_ACTIONS.has(action) && !(await organiserOk(req))) {
+  // Resolved once here rather than inside each handler: the admin handlers need
+  // to know who is asking, to refuse the two changes that would lock an
+  // administrator out of their own register.
+  let caller: Caller | null = null;
+  if (ADMIN_ACTIONS.has(action)) {
+    caller = await adminCaller(req);
+    if (!caller) return json({ error: "Administrator access is needed to manage accounts" }, 403);
+  } else if (ORGANISER_ACTIONS.has(action) && !(await organiserOk(req))) {
     return json({ error: "Please sign in to do this" }, 401);
   }
 
@@ -699,6 +880,11 @@ Deno.serve(async (req) => {
       case "save-form":           return await handleSaveForm(db, body);
       case "mark-attended":       return await handleMarkAttended(db, body);
       case "reset-feedback":      return await handleResetFeedback(db, body);
+      case "admin-list-users":    return await handleAdminListUsers(db);
+      case "admin-create-user":   return await handleAdminCreateUser(db, body, caller!);
+      case "admin-update-user":   return await handleAdminUpdateUser(db, body, caller!);
+      case "admin-delete-user":   return await handleAdminDeleteUser(db, body, caller!);
+      case "admin-send-reset":    return await handleAdminSendReset(db, body);
       default:                    return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {
