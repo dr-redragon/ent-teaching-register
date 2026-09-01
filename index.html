@@ -775,13 +775,33 @@ function showLogin(message){
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('loginError').innerHTML = message? `<div class="login-error">${escHtml(message)}</div>` : '';
 }
-function showForgot(){
+function showForgot(notice){
   hideAuthScreens();
   document.getElementById('forgotScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
-  document.getElementById('forgotMsg').innerHTML='';
+  document.getElementById('forgotMsg').innerHTML =
+    notice ? `<div class="notice info">${escHtml(notice)}</div>` : '';
+}
+
+/* A half-finished invite. Clicking an invite link signs the user in before they
+   have chosen a password, and supabase-js persists that session immediately. If
+   they close the tab at the set-password form, their next visit would drop them
+   straight into the app and never ask again -- leaving an account with no
+   password, which can only ever be signed into from that one browser until they
+   go through forgot-password. So remember, against their user id, that they
+   still owe us a password. Scoping it to the id keeps a stale flag from
+   trapping a different organiser who signs in on the same browser. */
+const PENDING_PW_KEY='ent_pending_password_setup';
+function markPendingPassword(userId){
+  try{ if(userId) localStorage.setItem(PENDING_PW_KEY, userId); }catch(e){}
+}
+function clearPendingPassword(){
+  try{ localStorage.removeItem(PENDING_PW_KEY); }catch(e){}
+}
+function pendingPasswordFor(userId){
+  try{ return !!userId && localStorage.getItem(PENDING_PW_KEY)===userId; }catch(e){ return false; }
 }
 function showReset(invite){
   hideAuthScreens();
@@ -790,6 +810,9 @@ function showReset(invite){
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('resetMsg').innerHTML='';
+  // Never leave a typed password sitting in a hidden field.
+  document.getElementById('resetPassword').value='';
+  document.getElementById('resetPassword2').value='';
   document.getElementById('resetTitle').textContent = invite ? 'Welcome — create your password' : 'Choose a new password';
   document.getElementById('resetLede').textContent = invite
     ? 'You’ve been invited as an organiser. Set a password below to activate your account.'
@@ -811,11 +834,12 @@ function wireLogin(){
     const {error}=await sb.auth.signInWithPassword({email,password});
     btn.disabled=false; btn.textContent='Sign in';
     if(error){ showLogin(error.message==='Invalid login credentials'? 'Incorrect email or password.' : error.message); return; }
+    clearPendingPassword();          // signing in with a password proves they have one
     await bootApp();
   };
   document.getElementById('loginBtn').onclick=doLogin;
   document.getElementById('loginPassword').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-  document.getElementById('logoutBtn').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
+  document.getElementById('logoutBtn').onclick=async()=>{ clearPendingPassword(); await sb.auth.signOut(); location.reload(); };
 
   document.getElementById('forgotLink').onclick=(e)=>{
     e.preventDefault();
@@ -855,6 +879,7 @@ function wireLogin(){
     const {error}=await sb.auth.updateUser({ password: pw });
     btn.disabled=false; btn.textContent='Set new password';
     if(error){ msgEl.innerHTML=`<div class="login-error">${escHtml(error.message)}</div>`; return; }
+    clearPendingPassword();          // they have a password now
     history.replaceState(null,'',location.pathname+location.search);
     await bootApp();
   };
@@ -2915,9 +2940,13 @@ whenReady(async function(){
   }
   // An invite or password-recovery link lands here with a token in the URL
   // hash (#access_token=...&type=invite|recovery). supabase-js consumes and
-  // strips that hash as soon as it processes the session, so grab the type
+  // strips that hash as soon as it processes the session, so grab what we need
   // now, synchronously, before creating the client -- it's gone a moment later.
-  const linkType = new URLSearchParams(location.hash.replace(/^#/,'')).get('type');
+  // A link that has expired or already been used comes back the same way but
+  // carrying an error instead of tokens, which supabase-js leaves in place.
+  const linkParams = new URLSearchParams(location.hash.replace(/^#/,''));
+  const linkType = linkParams.get('type');
+  const linkError = linkParams.get('error_code') || linkParams.get('error');
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){
@@ -2927,6 +2956,22 @@ whenReady(async function(){
   }
 
   wireLogin();
+
+  // A dead link -- expired, or already used once. There's no session to be had,
+  // so say so plainly and put them straight on the form that sends a fresh
+  // link, rather than dropping them on a sign-in screen they may well have no
+  // password for. Drop the error from the URL so a reload doesn't replay it.
+  if(linkError){
+    history.replaceState(null,'',location.pathname+location.search);
+    const expired = /expired/i.test(linkError);
+    showForgot((expired
+      ? 'That link has expired — emailed links are only good for a short time. '
+      : 'That link is no longer valid; it may already have been used. ')
+      + 'Enter your email below and we\'ll send you a fresh one. If you were invited '
+      + 'and have never signed in, ask whoever invited you to send the invitation again.');
+    return;
+  }
+
   // supabase-js exchanges the link's token for a session before the
   // getSession() below runs. For a recovery link it also fires a
   // PASSWORD_RECOVERY event; an invite link instead just signs the user in
@@ -2941,8 +2986,15 @@ whenReady(async function(){
     else if(event==='SIGNED_OUT') showLogin();
   });
   const {data:{session}} = await sb.auth.getSession();
-  if(recovering){ /* showReset() already called above */ }
-  else if(session){ await bootApp(); }
+  if(recovering){
+    // Remember an invitee who hasn't chosen a password yet, so abandoning this
+    // form doesn't quietly leave them with a password-less account.
+    if(linkType==='invite') markPendingPassword(session?.user?.id);
+  }
+  else if(session){
+    if(pendingPasswordFor(session.user.id)) showReset(true);   // unfinished invite
+    else await bootApp();
+  }
   else { showLogin(); }
 });
 </script>
