@@ -3166,7 +3166,15 @@ async function bootKiosk(sessId){
 }
 
 /* ============================================================
-   SEED DATA — built from the uploaded spreadsheet
+   EMPTY STARTER REGISTER
+
+   This file is public. It previously carried a real cohort — 46 named
+   trainees with their attendance, sickness, maternity and LTFT records —
+   as hard-coded seed data, which published that information to anyone who
+   opened the page or the repository.
+
+   The live register lives in Supabase and is loaded by loadDB(); nothing
+   here is needed to run it. A fresh install now starts empty.
    ============================================================ */
 function seedData(){
   return { trainees:[], sessions:[], attendance:{}, excused:[], status:[] };
