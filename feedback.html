@@ -178,7 +178,7 @@ async function boot() {
     ]);
     rows = r; attendees = a || [];
   } catch (e) {
-    return fail('Could not reach the register. Check your connection and try again.');
+    return fail(ENT.loadFailure(e));
   }
   session = rows && rows[0];
   if (!session) return fail('This feedback link is not valid any more.');

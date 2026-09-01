@@ -6,6 +6,16 @@ window.ENT = (function () {
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjeWh2dWJ3Y3FxZ2h1bW55eHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzQ3NzEsImV4cCI6MjA5NzE1MDc3MX0.0aI5Efr6h5UzUY3V-eJz1vihmntIMKqG3-_QMXq4cxY';
   const FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/register-api';
 
+  // Every failure below is raised through this, so the status survives the throw.
+  // Without it a 401/403 -- the register refusing the request -- is indistinguishable
+  // at the call site from a dropped connection, and the pages tell the trainee to
+  // check their wifi when nothing is wrong with it. See fail() in checkin.html.
+  function httpError(message, status) {
+    const err = new Error(message);
+    err.status = status;
+    return err;
+  }
+
   // Calls the register-api Edge Function. Organiser actions require the caller's
   // own Supabase Auth access token (from sb.auth.getSession()) as `accessToken` —
   // the Edge Function checks that it belongs to a real signed-in user. Anonymous
@@ -24,7 +34,7 @@ window.ENT = (function () {
     const ct = res.headers.get('content-type') || '';
     if (ct.includes('application/pdf')) return { ok: res.ok, blob: await res.blob() };
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    if (!res.ok) throw httpError(data.error || ('Request failed (' + res.status + ')'), res.status);
     return data;
   }
 
@@ -43,7 +53,7 @@ window.ENT = (function () {
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      throw new Error(e.message || 'Request failed (' + res.status + ')');
+      throw httpError(e.message || 'Request failed (' + res.status + ')', res.status);
     }
     return await res.json();
   }
@@ -60,7 +70,7 @@ window.ENT = (function () {
         Authorization: 'Bearer ' + (accessToken || SUPABASE_ANON_KEY),
       },
     });
-    if (!res.ok) throw new Error('Could not load data (' + res.status + ')');
+    if (!res.ok) throw httpError('Could not load data (' + res.status + ')', res.status);
     return await res.json();
   }
 
@@ -87,5 +97,15 @@ window.ENT = (function () {
     { key: 'recommend',    text: 'I would recommend this session to a colleague' },
   ];
 
-  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, rpc, esc, fmtDate, GRADES, QUESTIONS };
+  // A 401/403 here means the anon role has lost a grant it needs (see
+  // docs/SETUP.md §6) -- a real but fixable server-side fault. Saying "check your
+  // connection" for that sends the reader off to debug the one thing that is fine.
+  function loadFailure(err) {
+    return (err && (err.status === 401 || err.status === 403))
+      ? 'The register turned this page away (error ' + err.status + '). This is a settings '
+        + 'problem on our side, not your connection — please let the organiser know.'
+      : 'Could not reach the register. Check your connection and try again.';
+  }
+
+  return { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_URL, api, rest, rpc, esc, fmtDate, loadFailure, GRADES, QUESTIONS };
 })();
