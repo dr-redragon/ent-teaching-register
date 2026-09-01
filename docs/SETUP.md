@@ -17,18 +17,59 @@ feedback never see any of this; they only ever use `checkin.html` /
 `feedback.html`, which don't require an account.
 
 There is no self-service sign-up, by design — you control exactly who can see
-the roster. To add someone:
+the roster. Accounts are managed from the register itself, on the
+**Users & access** tab, so this is no longer a trip to the Supabase dashboard.
 
-1. Supabase dashboard → **Authentication → Users → Add user**.
-2. Enter their email and a password (or send an invite, if you'd rather they
-   set their own). Tick **Auto Confirm User** so they can sign in immediately.
-3. Give them the URL and that email/password. They sign in from the page
-   itself — there's nothing else to configure per person.
+To add someone: type their email on that tab and press **Add**.
 
-Remove access the same way: delete the user from that same list. There's no
-separate "roles" concept — anyone with an account sees and can change
-everything in the register, same as before this existed, just no longer
-open to the world.
+- Leave the password box **blank** and they are emailed an invitation. They
+  follow the link, choose their own password, and are signed in. Nothing has to
+  be passed to them out of band.
+- **Or set a password there** and tell them what it is. Use this when their
+  address can't receive our mail. The account is confirmed immediately, and they
+  can change the password later from **Forgot password?**.
+
+Each row on that tab has **Edit** (change their email, set a new password, or
+grant/revoke administrator), **Send reset email** (the same link the sign-in
+page's *Forgot password?* sends, triggered on their behalf, so you never have to
+know their password) and **✕** to delete the account.
+
+Deleting an account removes the sign-in and nothing else. Trainees, attendance,
+excuses, feedback and certificates don't belong to an organiser account, so
+nothing in the register goes with it.
+
+### Administrators
+
+There are exactly two levels:
+
+| | Sees the register | Sees **Users & access** |
+|---|---|---|
+| Organiser | yes | no |
+| Administrator | yes | yes |
+
+Being an administrator adds that tab and nothing else — every organiser could
+already see and change the whole register, and still can. Grant it with the
+**Administrator** tick box under **Edit**, or when adding someone.
+
+`mabdelaziz@outlook.com` is the first administrator; everyone else is granted
+from inside the app by an existing one.
+
+Two changes are refused, so an administrator can't lock themselves out of the
+one tab that could let them back in: you cannot delete your own account, and you
+cannot remove your own administrator access. Another administrator can do either
+for you. (This is also what keeps at least one administrator in existence: only
+an administrator can reach these controls, and they can never be the target.)
+
+Hiding the tab is a convenience, not the boundary. Every account action is
+served by the `admin-*` actions on the Edge Function, which look the *caller* up
+in `app_admins` before doing anything — so a signed-in organiser who knows the
+URL, edits the page, or calls the API directly still gets a flat 403. The
+`app_admins` table itself grants a signed-in user read access to exactly one
+row, their own, and no write access at all: granting admin happens only under
+the service role, after that check.
+
+The Supabase dashboard (**Authentication → Users**) still works and is still the
+way back in if you ever revoke your own access by other means.
 
 ### Forgotten passwords
 
@@ -98,6 +139,14 @@ Trainee-facing pages don't lose anything: a QR sign-in and the kiosk fallback
 go through two narrow functions — `public_roster()` (just trainee and session
 names, nothing else) and `record_local_checkin()` (writes one attendance entry,
 nothing else) — rather than the register itself.
+
+Adding a trainee to the roster is deliberately *not* on that list. A sign-in
+from someone whose name isn't there (§3) is enrolled by the Edge Function on
+the server, through `enrol_local_trainee()`, which is granted to nothing else —
+so the name that reaches the roster is one attached to a real sign-in against a
+real published session, not anything a browser holding the public key could
+write on its own. The kiosk fallback has no "not on the list" option for the
+same reason: it talks to the database directly, with no server in between.
 
 ---
 
@@ -246,10 +295,12 @@ lives.
 2. **On the day**, show the QR. Trainees pick their name, choose their grade,
    and sign in. If we already hold their email (see below) they can leave that
    field blank; if not, they're asked to add one so their certificate can reach
-   them. Their attendance also lands in the register grid; **Re-sync sign-ins**
-   repairs it at any point, and also backfills any missing roster emails from
-   what people signed in with. The icon beside **Open sign-in page** copies the
-   link, if you'd rather send it than show the QR.
+   them. Anyone whose name isn't on the list types it themselves and joins the
+   roster on the spot — see *Someone not on the list* below. Their attendance
+   also lands in the register grid; **Re-sync sign-ins** repairs it at any
+   point, and also backfills any missing roster emails from what people signed
+   in with. The icon beside **Open sign-in page** copies the link, if you'd
+   rather send it than show the QR.
 3. **At the end**, push the feedback form — right there on the *Check-in / QR*
    tab, under **Send the feedback form now**: **Email all outstanding** sends it
    to every checked-in trainee who hasn't given feedback yet, or tick
@@ -309,6 +360,38 @@ connection), the register still records it locally and says so — use
 **Re-sync sign-ins** on the *Check-in / QR* tab afterwards, which now also
 pushes anyone marked present here that never made it through, and reports
 by name anyone still missing an email once it has.
+
+### Someone not on the list
+
+The sign-in page ends its name dropdown with **My name is not on the list…**.
+Whoever picks it types their full name, grade and email, and that is all they
+have to do: they are added to the register's trainee list there and then,
+marked present for that teaching day, and their name is in the dropdown for
+every teaching day after it. Nothing needs adding by hand afterwards — a new
+starter, a rotation you didn't know about, a visitor from another deanery all
+sign themselves in.
+
+Three things worth knowing:
+
+- **Names are matched, so nobody is added twice.** A typed name that already
+  exists on the roster (someone who scrolled past their own entry, or signed in
+  again from a second phone) attaches to that record instead of creating a
+  duplicate. Matching ignores case and surrounding spaces. It does *not* catch
+  a genuinely different spelling — "Jon Smith" for "John Smith" makes a second
+  trainee, which you merge by deleting one on the *Trainees & sessions* tab.
+- **They start with no history.** A new trainee is eligible from the register's
+  first session, so a mid-year joiner shows as absent for the teaching days
+  before they arrived. If they joined part-way through, give them an **IDT in**
+  status from their arrival month (see *Long-term status* above) and those
+  earlier days stop counting against them.
+- **Their grade behaves like everyone else's.** It is dated to that session's
+  month, so a later sign-in supersedes it and one you set by hand sticks until
+  they next sign in.
+
+**Re-sync sign-ins** does the same repair after the fact: anyone on the live
+list whose name isn't on the roster is added to it and marked present, and the
+summary names who joined. That covers the sessions signed into before this
+existed, and the rare sign-in whose roster write didn't land.
 
 ### Deleting a session's feedback
 
@@ -387,7 +470,8 @@ Certificates go to an email address, so the register keeps one per trainee:
   add-trainee form takes an optional email up front.
 - **At sign-in**, a trainee we already have an email for can leave the field
   blank; one we don't is required to add it, and it's saved to their record for
-  next time. A trainee not on the roster always types one.
+  next time. Someone not on the roster always types one, and it goes onto the
+  roster record created for them.
 - The stored address is never exposed to the anonymous sign-in page — it's
   filled in and read only on the server, and only ever used to send that
   trainee their own certificate.
@@ -544,6 +628,9 @@ above — they coexist fine.
 | Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam. If custom SMTP is set up (§1a), the send shows in **Resend → Emails** like any other; if it isn't, you're on Supabase's built-in sender, which is rate-limited and more often filtered. |
 | Password reset arrives from Supabase, not `no-reply@traineehq.com` | Expected until custom SMTP is configured — the Edge Function secrets in §2 don't apply to Auth emails. Set it up in §1a. |
 | Password resets suddenly stop after a few | Custom SMTP caps Auth at 30 emails/hour by default. Raise it at Authentication → Rate Limits (§1a). |
+| Two entries for the same trainee | They signed in as "my name is not on the list" with a different spelling from their roster entry, so the match missed. Delete the duplicate on the *Trainees & sessions* tab, then tick them present on the grid for that day. |
+| Can't log in to the register | Check the account on the **Users & access** tab: if it still shows *Invited — not signed in*, they never followed the invitation link — use **Send reset email** to give them a fresh one. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or **Edit** their row and set a new password. Failing all that, the Supabase dashboard (Authentication → Users) still works. |
+| Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
 | Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |
 | Redirect loop / "too many redirects" on the domain | Cloudflare's SSL/TLS mode is `Flexible` with the record proxied. Set **SSL/TLS → Overview** to `Full`, or grey-cloud the record back to DNS only (§5). |
 | Settings → Pages stuck on "provisioning" certificate | The record is orange-clouded, so GitHub can't complete its challenge. Switch it to **DNS only** and the certificate issues within minutes (§5). |

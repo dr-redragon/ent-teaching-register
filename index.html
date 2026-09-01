@@ -209,6 +209,9 @@
   .badge.idt_out{background:#e0dcef;color:#544a86}
   .badge.idt_in{background:#d5e8df;color:#2f6b4d}
   .badge.active{background:#dcebe0;color:var(--moss-deep)}
+  .badge.admin{background:#e0dcef;color:#544a86}
+  .badge.pending{background:#f7e8d4;color:#8a6210}
+  .badge.you{background:#eef0e6;color:var(--muted)}
   .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:14px 2px 0}
   .legend span{display:inline-flex;align-items:center;gap:6px}
   .legend .dot{cursor:default}
@@ -337,8 +340,8 @@
   </div>
   <button class="btn primary" id="loginBtn" style="width:100%;padding:13px;font-size:15px">Sign in</button>
   <p class="helper" style="margin-top:10px;text-align:right"><a href="#" id="forgotLink">Forgot password?</a></p>
-  <p class="helper" style="margin-top:4px">No account yet? Ask whoever administers this register to add you under
-    Supabase → Authentication → Users — there's no self-service sign-up.</p>
+  <p class="helper" style="margin-top:4px">No account yet? Ask an administrator of this register to add you from the
+    <strong>Users &amp; access</strong> tab — there's no self-service sign-up.</p>
 </div>
 
 <!-- ===== FORGOT PASSWORD ===== -->
@@ -354,10 +357,10 @@
   <p class="helper" style="margin-top:14px"><a href="#" id="backToLoginLink">Back to sign in</a></p>
 </div>
 
-<!-- ===== SET NEW PASSWORD (arrived via emailed reset link) ===== -->
+<!-- ===== SET NEW PASSWORD (arrived via emailed invite/reset link) ===== -->
 <div class="kiosk-card card pad" id="resetScreen" style="display:none">
-  <h2 class="panel-title" style="margin-bottom:2px">Choose a new password</h2>
-  <p class="panel-lede" style="margin-bottom:18px">This resets the password for your organiser account.</p>
+  <h2 class="panel-title" style="margin-bottom:2px" id="resetTitle">Choose a new password</h2>
+  <p class="panel-lede" style="margin-bottom:18px" id="resetLede">This resets the password for your organiser account.</p>
   <div id="resetMsg"></div>
   <div class="field">
     <label class="fld">New password</label>
@@ -377,6 +380,7 @@
     <button class="tab" data-tab="excused">Excused absences</button>
     <button class="tab" data-tab="status">Long-term status</button>
     <button class="tab" data-tab="manage">Trainees &amp; sessions</button>
+    <button class="tab" data-tab="admin" id="adminTabBtn" style="display:none">Users &amp; access</button>
   </div>
 </nav>
 
@@ -585,6 +589,33 @@
     </div>
   </section>
 
+  <!-- ===== USERS & ACCESS (administrators only) ===== -->
+  <section class="panel" id="panel-admin">
+    <h2 class="panel-title">Users &amp; access</h2>
+    <p class="panel-lede">Organiser accounts for this register: who can sign in, and which of them can manage this list. Everyone here sees the same register — being an administrator adds this tab and nothing else. Trainees never have an account; they use the QR code and the feedback link.</p>
+
+    <div class="card pad">
+      <label class="fld">Add an organiser</label>
+      <div class="inline-form" style="grid-template-columns:1.6fr 1.1fr auto">
+        <div><input id="auEmail" type="email" placeholder="name@example.com" autocomplete="off"></div>
+        <div><input id="auPassword" type="text" placeholder="Password (optional)" autocomplete="off"></div>
+        <div><button class="btn primary" id="auAdd">Add</button></div>
+      </div>
+      <label class="mini-check" style="margin-top:10px"><input type="checkbox" id="auAdmin"> Make them an administrator too</label>
+      <p class="helper">Leave the password blank to email them an invitation — they follow the link and choose their own. Set one here instead if their address can’t receive our mail: tell them what it is, and they can change it later from <strong>Forgot password?</strong> on the sign-in screen.</p>
+      <div id="auMsg"></div>
+    </div>
+
+    <div class="att-head">
+      <div class="row-actions">
+        <input id="adminSearch" placeholder="Search accounts…" style="max-width:260px">
+      </div>
+      <button class="btn ghost sm" id="adminRefresh">Refresh</button>
+    </div>
+    <div id="adminUsers" style="margin-top:12px"></div>
+    <p class="helper" style="margin-top:12px">Deleting an account removes the sign-in only. Nothing in the register — trainees, attendance, excuses, feedback — belongs to an organiser account, so nothing here is lost with it.</p>
+  </section>
+
 </main>
 
 <!-- ===== KIOSK / FORM VIEW (QR target) ===== -->
@@ -698,6 +729,37 @@
   </div>
 </div>
 
+<!-- ===== EDIT ORGANISER ACCOUNT (administrators only) ===== -->
+<div class="modal-back" id="userEditModal">
+  <div class="modal-card" style="max-width:460px">
+    <div class="modal-head">
+      <h3>Edit account</h3>
+      <button class="btn ghost sm" onclick="hideUserEdit()">Close</button>
+    </div>
+    <div class="modal-body">
+      <div id="userEditError"></div>
+      <div class="field">
+        <label class="fld" for="userEditEmail">Email</label>
+        <input id="userEditEmail" type="email" autocomplete="off">
+        <p class="helper">Changing this changes what they sign in with, straight away.</p>
+      </div>
+      <div class="field">
+        <label class="fld" for="userEditPassword">New password</label>
+        <input id="userEditPassword" type="text" placeholder="leave blank to keep the current one" autocomplete="off">
+        <p class="helper">Or close this and use <strong>Send reset email</strong> on their row, so they choose their own and you never see it.</p>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label class="mini-check"><input type="checkbox" id="userEditAdmin"> Administrator</label>
+        <p class="helper" id="userEditAdminNote">Administrators can add, edit and delete organiser accounts, and grant this to others.</p>
+      </div>
+    </div>
+    <div style="padding:14px 26px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn ghost" onclick="hideUserEdit()">Cancel</button>
+      <button class="btn primary" id="userEditSave">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== CHASE ABSENCES ===== -->
 <div class="modal-back" id="chaseModal">
   <div class="modal-card">
@@ -753,14 +815,16 @@ const STORE_KEY = 'ent_register_v1';
 const SUPABASE_URL = 'https://ecyhvubwcqqghumnyxuu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjeWh2dWJ3Y3FxZ2h1bW55eHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzQ3NzEsImV4cCI6MjA5NzE1MDc3MX0.0aI5Efr6h5UzUY3V-eJz1vihmntIMKqG3-_QMXq4cxY';
 let sb = null;    // created at boot, once the deferred supabase-js has run
+let currentUserId = null;   // the signed-in organiser, for "this is you" in the account list
 
 /* ============================================================
    AUTH — the register (this file) is for organisers only, gated by a
-   real Supabase account (Authentication -> Users; no self-service
-   sign-up by design). Trainee-facing pages never touch this: checkin.html
-   and feedback.html call the Edge Function's anon-safe actions and the
-   two narrow RPCs below, and the kiosk view further down this file uses
-   the same RPCs rather than loading the organiser's data at all.
+   real Supabase account (added from the Users & access tab by an
+   administrator; no self-service sign-up by design). Trainee-facing pages
+   never touch this: checkin.html and feedback.html call the Edge Function's
+   anon-safe actions and the two narrow RPCs below, and the kiosk view
+   further down this file uses the same RPCs rather than loading the
+   organiser's data at all.
    ============================================================ */
 function hideAuthScreens(){
   document.getElementById('loginScreen').style.display='none';
@@ -775,21 +839,48 @@ function showLogin(message){
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('loginError').innerHTML = message? `<div class="login-error">${escHtml(message)}</div>` : '';
 }
-function showForgot(){
+function showForgot(notice){
   hideAuthScreens();
   document.getElementById('forgotScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
-  document.getElementById('forgotMsg').innerHTML='';
+  document.getElementById('forgotMsg').innerHTML =
+    notice ? `<div class="notice info">${escHtml(notice)}</div>` : '';
 }
-function showReset(){
+
+/* A half-finished invite. Clicking an invite link signs the user in before they
+   have chosen a password, and supabase-js persists that session immediately. If
+   they close the tab at the set-password form, their next visit would drop them
+   straight into the app and never ask again -- leaving an account with no
+   password, which can only ever be signed into from that one browser until they
+   go through forgot-password. So remember, against their user id, that they
+   still owe us a password. Scoping it to the id keeps a stale flag from
+   trapping a different organiser who signs in on the same browser. */
+const PENDING_PW_KEY='ent_pending_password_setup';
+function markPendingPassword(userId){
+  try{ if(userId) localStorage.setItem(PENDING_PW_KEY, userId); }catch(e){}
+}
+function clearPendingPassword(){
+  try{ localStorage.removeItem(PENDING_PW_KEY); }catch(e){}
+}
+function pendingPasswordFor(userId){
+  try{ return !!userId && localStorage.getItem(PENDING_PW_KEY)===userId; }catch(e){ return false; }
+}
+function showReset(invite){
   hideAuthScreens();
   document.getElementById('resetScreen').style.display='block';
   document.getElementById('mainNav').style.display='none';
   document.getElementById('appMain').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
   document.getElementById('resetMsg').innerHTML='';
+  // Never leave a typed password sitting in a hidden field.
+  document.getElementById('resetPassword').value='';
+  document.getElementById('resetPassword2').value='';
+  document.getElementById('resetTitle').textContent = invite ? 'Welcome — create your password' : 'Choose a new password';
+  document.getElementById('resetLede').textContent = invite
+    ? 'You’ve been invited as an organiser. Set a password below to activate your account.'
+    : 'This resets the password for your organiser account.';
 }
 function hideLogin(){
   hideAuthScreens();
@@ -807,11 +898,12 @@ function wireLogin(){
     const {error}=await sb.auth.signInWithPassword({email,password});
     btn.disabled=false; btn.textContent='Sign in';
     if(error){ showLogin(error.message==='Invalid login credentials'? 'Incorrect email or password.' : error.message); return; }
+    clearPendingPassword();          // signing in with a password proves they have one
     await bootApp();
   };
   document.getElementById('loginBtn').onclick=doLogin;
   document.getElementById('loginPassword').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-  document.getElementById('logoutBtn').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
+  document.getElementById('logoutBtn').onclick=async()=>{ clearPendingPassword(); await sb.auth.signOut(); location.reload(); };
 
   document.getElementById('forgotLink').onclick=(e)=>{
     e.preventDefault();
@@ -851,6 +943,7 @@ function wireLogin(){
     const {error}=await sb.auth.updateUser({ password: pw });
     btn.disabled=false; btn.textContent='Set new password';
     if(error){ msgEl.innerHTML=`<div class="login-error">${escHtml(error.message)}</div>`; return; }
+    clearPendingPassword();          // they have a password now
     history.replaceState(null,'',location.pathname+location.search);
     await bootApp();
   };
@@ -1886,9 +1979,10 @@ function renderCloudPanel(){
        </span>
        <button class="btn ghost sm" id="cloudSync">Re-sync sign-ins</button>
      </div>
-     <p class="helper" id="cloudSyncMsg">This is the page the QR opens. Sign-ins reach the attendance grid on their
-       own — re-sync is the repair button: use it if someone signed in while offline, if you added them to the roster
-       after they signed in, or to pull in emails and grades people typed on the day.</p>
+     <p class="helper" id="cloudSyncMsg">This is the page the QR opens. Anyone whose name is not on the list types it
+       themselves and joins the roster on the spot. Sign-ins reach the attendance grid on their own — re-sync is the
+       repair button: use it if someone signed in while offline, or to pull in emails and grades people typed on the
+       day.</p>
 
      <div class="grouphead">After the session</div>
      <div class="row-actions">
@@ -2017,7 +2111,10 @@ async function loadCloudCounts(s){
 }
 
 // Cloud sign-ins are matched to the register by name. Anyone who typed a name
-// that is not on the roster is reported rather than guessed at.
+// that is not on the roster joins it here: the check-in function already enrols
+// them as they sign in, so this is the repair path for anything that missed it
+// (an offline moment, a session signed into before this existed, a name marked
+// present straight on the live console).
 async function syncCloudCheckins(s){
   setCloudSyncMsg('Syncing sign-ins…');
   try{
@@ -2028,26 +2125,40 @@ async function syncCloudCheckins(s){
     const pushed = await pushAttendance(s, presentHere, true);
     const res=await callApi('session-status',{session_id:s.cloudId});
     const byName=new Map(DB.trainees.map(t=>[t.name.trim().toLowerCase(), t]));
-    let added=0, emailed=0; const unmatched=[];
+    let added=0, emailed=0; const enrolled=[];
     (res.attendees||[]).filter(a=>a.checked_in_at).forEach(a=>{
-      const t=byName.get(String(a.name).trim().toLowerCase());
-      if(!t){ unmatched.push(a.name); return; }
+      const name=String(a.name||'').trim();
+      if(!name) return;
+      let t=byName.get(name.toLowerCase());
+      if(!t){
+        // Signed in as "my name is not on the list". They join the roster rather
+        // than being reported and forgotten -- this session counts for them, and
+        // they are on the list for every teaching day from here on. Grade and
+        // gradeFrom are left to refreshGrades() below, which dates the grade to
+        // this session's month exactly as it does for everybody else.
+        t={id:uid(),name,email:'',grade:'',gradeFrom:''};
+        DB.trainees.push(t);
+        byName.set(name.toLowerCase(), t);
+        enrolled.push(name);
+      }
       const key=attKey(t.id,s.id);
       if(!DB.attendance[key]){ DB.attendance[key]={grade:a.grade||''}; added++; }
       // What they put on the form is the trainee's own statement of their grade,
       // so a corrected re-sign-in replaces what we held rather than being ignored.
       else if(a.grade && DB.attendance[key].grade!==a.grade){ DB.attendance[key].grade=a.grade; }
-      // backfill a missing roster email from what they signed in with
-      if(a.email && !(t.email||'').trim()){ t.email=a.email; emailed++; }
+      // backfill a missing roster email from what they signed in with. The
+      // server stands in an undeliverable placeholder for anyone marked present
+      // with no address on file; writing that back would look like an email.
+      if(a.email && !/@no-email\.invalid$/i.test(a.email) && !(t.email||'').trim()){ t.email=a.email; emailed++; }
     });
     const regraded = refreshGrades();
-    if(added||emailed||regraded) await saveDB();
+    if(added||emailed||regraded||enrolled.length) await saveDB();
     const noEmail = (pushed && pushed.no_email) || [];
     const summary = `${added} new sign-in${added===1?'':'s'} added to the register.` +
       (pushed && pushed.marked? ` ${pushed.marked} marked present here ${pushed.marked===1?'is':'are'} now on the live list too.` : '') +
       (emailed? ` ${emailed} email${emailed===1?'':'s'} added to the roster.` : '') +
       (noEmail.length? ` No email on file, so no certificate can reach them: ${noEmail.join(', ')}.` : '') +
-      (unmatched.length? ` Not on the roster, so skipped: ${unmatched.join(', ')}.` : '');
+      (enrolled.length? ` Added to the roster as new trainee${enrolled.length===1?'':'s'}: ${enrolled.join(', ')}.` : '');
     renderAll();                       // re-renders this panel, so report afterwards
     setCloudSyncMsg(summary);
     if(added) toast(added+' sign-ins pulled in');
@@ -2346,6 +2457,234 @@ function toast(msg){
 }
 
 /* ============================================================
+   USERS & ACCESS — organiser accounts, managed from the register itself
+   rather than the Supabase dashboard.
+
+   Every account here can already see and change the whole register; the
+   administrator flag adds exactly one thing, this tab. The flag lives in
+   app_admins, and the Edge Function checks the *caller's* row there before
+   it will touch anyone's account — so hiding the tab below is only about
+   not showing people a control they cannot use. It is not the boundary.
+   ============================================================ */
+let IS_ADMIN = false;
+let adminUsers = [];              // last list fetched from the Edge Function
+let adminLoaded = false;          // first visit to the tab loads it
+let editingUserId = null;
+
+// One narrow read, under the organiser's own token: RLS on app_admins lets them
+// see their own row and nothing else, so this answers "am I an administrator?"
+// without exposing who the others are.
+async function fetchIsAdmin(){
+  try{
+    const {data:{session}} = await sb.auth.getSession();
+    if(!session) return false;
+    const res = await fetch(
+      SUPABASE_URL+'/rest/v1/app_admins?select=user_id&user_id=eq.'+encodeURIComponent(session.user.id),
+      { headers:{ apikey:SUPABASE_KEY, Authorization:'Bearer '+session.access_token } });
+    if(!res.ok) return false;
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length > 0;
+  }catch(e){ return false; }
+}
+
+async function applyAdminVisibility(){
+  IS_ADMIN = await fetchIsAdmin();
+  const btn = document.getElementById('adminTabBtn');
+  if(btn) btn.style.display = IS_ADMIN ? '' : 'none';
+  if(!IS_ADMIN){
+    // Rights revoked while they had the tab open, or a stale #admin in the URL.
+    // Drop the list too, so nothing about the other accounts is left sitting in
+    // the (now unreachable) panel.
+    adminLoaded = false; adminUsers = [];
+    document.getElementById('adminUsers').innerHTML = '';
+    if(document.getElementById('panel-admin').classList.contains('active')) showTab('dash');
+  }
+}
+
+function fmtWhen(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return '—';
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+}
+
+async function loadAdminUsers(){
+  const box = document.getElementById('adminUsers');
+  box.innerHTML = `<div class="empty">Loading accounts…</div>`;
+  try{
+    const res = await callApi('admin-list-users',{});
+    adminUsers = res.users || [];
+    adminLoaded = true;
+    renderAdminUsers();
+  }catch(err){
+    adminLoaded = false;
+    box.innerHTML = `<div class="notice bad">${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderAdminUsers(){
+  const box = document.getElementById('adminUsers');
+  if(!box) return;
+  const me = currentUserId;
+  const q = (document.getElementById('adminSearch').value||'').trim().toLowerCase();
+  const list = adminUsers.filter(u=>!q || u.email.toLowerCase().includes(q));
+
+  if(!list.length){
+    box.innerHTML = `<div class="empty">${adminUsers.length? 'No account matches that.' : 'No accounts yet.'}</div>`;
+    return;
+  }
+
+  const rows = list.map(u=>{
+    const isMe = u.id === me;
+    const role = u.is_admin
+      ? `<span class="badge admin">Administrator</span>`
+      : `<span class="badge active">Organiser</span>`;
+    const status = u.confirmed
+      ? `<span class="li-sub">Active</span>`
+      : `<span class="badge pending">Invited — not signed in</span>`;
+    return `<tr>
+      <td class="name-cell">${escHtml(u.email)}${isMe?' <span class="badge you">you</span>':''}</td>
+      <td>${role}</td>
+      <td>${status}</td>
+      <td class="li-sub">${escHtml(fmtWhen(u.last_sign_in_at))}</td>
+      <td class="li-sub">${escHtml(fmtWhen(u.created_at))}</td>
+      <td>
+        <div class="row-actions" style="flex-wrap:nowrap;justify-content:flex-end">
+          <button class="btn ghost sm" data-edituser="${escHtml(u.id)}">Edit</button>
+          <button class="btn ghost sm" data-resetuser="${escHtml(u.email)}">Send reset email</button>
+          ${isMe ? '' : `<span class="kebab" data-deluser="${escHtml(u.id)}" title="Delete this account">✕</span>`}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th class="no-sort">Email</th><th class="no-sort">Role</th><th class="no-sort">Status</th>
+      <th class="no-sort">Last sign-in</th><th class="no-sort">Added</th>
+      <th class="no-sort" style="text-align:right">&nbsp;</th>
+    </tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+
+  box.querySelectorAll('[data-edituser]').forEach(b=>b.onclick=()=>showUserEdit(b.dataset.edituser));
+  box.querySelectorAll('[data-resetuser]').forEach(b=>b.onclick=()=>sendUserReset(b.dataset.resetuser, b));
+  box.querySelectorAll('[data-deluser]').forEach(b=>b.onclick=()=>deleteUser(b.dataset.deluser));
+}
+
+async function addOrganiser(){
+  const emailEl = document.getElementById('auEmail');
+  const pwEl    = document.getElementById('auPassword');
+  const adminEl = document.getElementById('auAdmin');
+  const msg     = document.getElementById('auMsg');
+  const email = emailEl.value.trim();
+  const password = pwEl.value;
+  msg.innerHTML = '';
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return msg.innerHTML = `<div class="notice bad">Enter a valid email address.</div>`;
+  if(password && password.length < 8)
+    return msg.innerHTML = `<div class="notice bad">A password needs at least 8 characters — or leave it blank to send an invitation.</div>`;
+
+  const btn = document.getElementById('auAdd');
+  btn.disabled = true; btn.textContent = password ? 'Adding…' : 'Inviting…';
+  try{
+    const res = await callApi('admin-create-user',{ email, password, admin: adminEl.checked });
+    emailEl.value=''; pwEl.value=''; adminEl.checked=false;
+    msg.innerHTML = `<div class="notice info">${res.invited
+      ? escHtml(email)+' has been emailed an invitation. They set their own password from the link.'
+      : escHtml(email)+' can sign in now with the password you set.'}</div>`;
+    await loadAdminUsers();
+  }catch(err){
+    msg.innerHTML = `<div class="notice bad">${escHtml(err.message)}</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = 'Add';
+  }
+}
+
+function showUserEdit(id){
+  const u = adminUsers.find(x=>x.id===id); if(!u) return;
+  editingUserId = id;
+  document.getElementById('userEditError').innerHTML='';
+  document.getElementById('userEditEmail').value = u.email;
+  document.getElementById('userEditPassword').value = '';
+  const chk = document.getElementById('userEditAdmin');
+  chk.checked = !!u.is_admin;
+  // Refused by the server too; disabling it here explains why rather than
+  // letting them tick it and meet an error.
+  const isMe = u.id === currentUserId;
+  chk.disabled = isMe && u.is_admin;
+  document.getElementById('userEditAdminNote').textContent = chk.disabled
+    ? 'You cannot remove your own administrator access — another administrator has to do it for you.'
+    : 'Administrators can add, edit and delete organiser accounts, and grant this to others.';
+  document.getElementById('userEditModal').classList.add('show');
+}
+function hideUserEdit(){
+  document.getElementById('userEditModal').classList.remove('show');
+  editingUserId = null;
+}
+
+async function saveUserEdit(){
+  const u = adminUsers.find(x=>x.id===editingUserId); if(!u) return hideUserEdit();
+  const err = document.getElementById('userEditError');
+  const email = document.getElementById('userEditEmail').value.trim();
+  const password = document.getElementById('userEditPassword').value;
+  const admin = document.getElementById('userEditAdmin').checked;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return err.innerHTML = `<div class="notice bad">That doesn’t look like a valid email address.</div>`;
+  if(password && password.length < 8)
+    return err.innerHTML = `<div class="notice bad">A password needs at least 8 characters.</div>`;
+
+  const btn = document.getElementById('userEditSave');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    await callApi('admin-update-user',{ user_id: u.id, email, password, admin });
+    hideUserEdit();
+    toast('Account updated');
+    await loadAdminUsers();
+    // They may have just granted or revoked their own tab, indirectly.
+    await applyAdminVisibility();
+  }catch(e){
+    err.innerHTML = `<div class="notice bad">${escHtml(e.message)}</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+async function sendUserReset(email, btn){
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try{
+    await callApi('admin-send-reset',{ email });
+    toast('Reset link sent to '+email);
+  }catch(e){
+    toast(e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function deleteUser(id){
+  const u = adminUsers.find(x=>x.id===id); if(!u) return;
+  if(!confirm(`Delete the account for ${u.email}? They lose access to the register immediately. Nothing in the register itself is removed.`)) return;
+  try{
+    await callApi('admin-delete-user',{ user_id: id });
+    toast('Account deleted');
+    await loadAdminUsers();
+  }catch(e){ toast(e.message); }
+}
+
+function wireAdmin(){
+  document.getElementById('auAdd').onclick = addOrganiser;
+  document.getElementById('auPassword').addEventListener('keydown',e=>{ if(e.key==='Enter') addOrganiser(); });
+  document.getElementById('auEmail').addEventListener('keydown',e=>{ if(e.key==='Enter') addOrganiser(); });
+  document.getElementById('adminSearch').oninput = ()=>{ if(adminLoaded) renderAdminUsers(); };
+  document.getElementById('adminRefresh').onclick = loadAdminUsers;
+  document.getElementById('userEditSave').onclick = saveUserEdit;
+  document.getElementById('userEditModal').addEventListener('click',e=>{
+    if(e.target===document.getElementById('userEditModal')) hideUserEdit();
+  });
+}
+
+/* ============================================================
    EVENTS
    ============================================================ */
 // Tabs are addressable as #dash / #checkin / ... so other pages (the session
@@ -2354,9 +2693,13 @@ function showTab(name){
   const tab=document.querySelector('.tab[data-tab="'+name+'"]');
   const panel=document.getElementById('panel-'+name);
   if(!tab||!panel) return false;
+  if(name==='admin' && !IS_ADMIN) return false;   // also stops a stale #admin in the URL
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
   tab.classList.add('active'); panel.classList.add('active');
+  // The account list is a network read, so it waits until the tab is actually
+  // opened rather than costing every visit to the register a round trip.
+  if(name==='admin' && !adminLoaded) loadAdminUsers();
   return true;
 }
 function applyTabHash(){ return showTab((location.hash||'').replace(/^#/,'')); }
@@ -2823,7 +3166,15 @@ async function bootKiosk(sessId){
 }
 
 /* ============================================================
-   SEED DATA — built from the uploaded spreadsheet
+   EMPTY STARTER REGISTER
+
+   This file is public. It previously carried a real cohort — 46 named
+   trainees with their attendance, sickness, maternity and LTFT records —
+   as hard-coded seed data, which published that information to anyone who
+   opened the page or the repository.
+
+   The live register lives in Supabase and is loaded by loadDB(); nothing
+   here is needed to run it. A fresh install now starts empty.
    ============================================================ */
 function seedData(){
   return { trainees:[], sessions:[], attendance:{}, excused:[], status:[] };
@@ -2853,6 +3204,7 @@ function wireOnce(){
   if(wired) return;
   wired = true;
   wire();
+  wireAdmin();
   initMonthPickers();
   updateStatusHelper();
 }
@@ -2865,6 +3217,14 @@ async function bootApp(){
   hideLogin();
   const cached = cachedDB();
   dbReady = remoteDB();                // starts now; deliberately not awaited yet
+
+  // Who is signed in, and do they administer the register? Both are wanted
+  // before the first paint (the tab strip is drawn once), but neither should
+  // hold up the register itself, so they run alongside the database read.
+  const whoReady = sb.auth.getSession()
+    .then(({data}) => { currentUserId = data?.session?.user?.id || null; })
+    .catch(() => {})
+    .then(applyAdminVisibility);
 
   if(cached){
     DB = normaliseDB(cached);
@@ -2895,6 +3255,11 @@ async function bootApp(){
     applyTabHash();
     await saveDB();
   }
+
+  // The tab strip is painted before this settles, so #admin in the URL only
+  // opens once we know the answer -- and never for anyone who isn't an admin.
+  await whoReady;
+  if(IS_ADMIN) applyTabHash();
 }
 
 // Deferred scripts finish before DOMContentLoaded, so supabase-js is guaranteed
@@ -2909,6 +3274,15 @@ whenReady(async function(){
     showLogin('Could not load the sign-in library. Check your connection and reload.');
     return;
   }
+  // An invite or password-recovery link lands here with a token in the URL
+  // hash (#access_token=...&type=invite|recovery). supabase-js consumes and
+  // strips that hash as soon as it processes the session, so grab what we need
+  // now, synchronously, before creating the client -- it's gone a moment later.
+  // A link that has expired or already been used comes back the same way but
+  // carrying an error instead of tokens, which supabase-js leaves in place.
+  const linkParams = new URLSearchParams(location.hash.replace(/^#/,''));
+  const linkType = linkParams.get('type');
+  const linkError = linkParams.get('error_code') || linkParams.get('error');
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const params=new URLSearchParams(location.search);
   if(params.has('form')){
@@ -2918,19 +3292,45 @@ whenReady(async function(){
   }
 
   wireLogin();
-  // A password-recovery link lands here with the recovery token in the URL;
-  // supabase-js exchanges it for a session and fires this event before the
-  // getSession() below runs, so check it first and show the reset form
+
+  // A dead link -- expired, or already used once. There's no session to be had,
+  // so say so plainly and put them straight on the form that sends a fresh
+  // link, rather than dropping them on a sign-in screen they may well have no
+  // password for. Drop the error from the URL so a reload doesn't replay it.
+  if(linkError){
+    history.replaceState(null,'',location.pathname+location.search);
+    const expired = /expired/i.test(linkError);
+    showForgot((expired
+      ? 'That link has expired — emailed links are only good for a short time. '
+      : 'That link is no longer valid; it may already have been used. ')
+      + 'Enter your email below and we\'ll send you a fresh one. If you were invited '
+      + 'and have never signed in, ask whoever invited you to send the invitation again.');
+    return;
+  }
+
+  // supabase-js exchanges the link's token for a session before the
+  // getSession() below runs. For a recovery link it also fires a
+  // PASSWORD_RECOVERY event; an invite link instead just signs the user in
+  // (invited users have no password yet to "recover"), so it wouldn't be
+  // caught by that event alone. Either way, show the set-password form
   // instead of booting straight into the app with a session the user hasn't
-  // chosen to be in.
-  let recovering=false;
+  // knowingly chosen -- and, for invites, hasn't set a password for at all.
+  let recovering = linkType==='invite' || linkType==='recovery';
+  if(recovering) showReset(linkType==='invite');
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(); }
+    if(event==='PASSWORD_RECOVERY'){ recovering=true; showReset(linkType==='invite'); }
     else if(event==='SIGNED_OUT') showLogin();
   });
   const {data:{session}} = await sb.auth.getSession();
-  if(recovering){ /* showReset() already called above */ }
-  else if(session){ await bootApp(); }
+  if(recovering){
+    // Remember an invitee who hasn't chosen a password yet, so abandoning this
+    // form doesn't quietly leave them with a password-less account.
+    if(linkType==='invite') markPendingPassword(session?.user?.id);
+  }
+  else if(session){
+    if(pendingPasswordFor(session.user.id)) showReset(true);   // unfinished invite
+    else await bootApp();
+  }
   else { showLogin(); }
 });
 </script>
