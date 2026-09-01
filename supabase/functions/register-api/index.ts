@@ -834,6 +834,10 @@ async function handleAdminSendReset(db: SupabaseClient, body: Record<string, unk
 const ORGANISER_ACTIONS = new Set([
   "create-session", "session-status", "send-certificate", "email-feedback-link", "certificate-preview",
   "chase-absences", "get-form", "save-form", "mark-attended", "reset-feedback",
+  // check-in writes attendance and can add names to the roster, and this function
+  // runs as service_role, so leaving it ungated let anyone holding the publishable
+  // key record attendance for anybody. Organisers mark attendance from the console.
+  "check-in",
 ]);
 
 // A stricter tier than the above: signing in is not enough, the caller has to be
