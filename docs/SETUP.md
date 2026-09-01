@@ -437,7 +437,7 @@ Supporting details:
 One honest limit: free-text comments are only as anonymous as what people type
 into them — nothing stops a trainee identifying themselves in their own words.
 
-### The two linter warnings are deliberate
+### The linter warnings are deliberate
 
 Supabase's database linter flags `feedback_public` and `session_stats` as
 *Security Definer View*. That is the mechanism doing the work, not a mistake:
@@ -446,6 +446,21 @@ aggregates while browsers stay locked out of `feedback_responses` itself. Both
 views expose only non-identifying columns. Leaving the warnings is the correct
 outcome here; "fixing" them by making the views run as the caller would break
 the report or force the raw table open.
+
+It also flags `public_roster()` and `record_local_checkin()` as *Public Can
+Execute SECURITY DEFINER Function* — anon-callable, running with the owner's
+rights. Same answer, and this one has already bitten once: those two functions
+plus anon `select` on `sessions` **are** the QR check-in flow. They are the
+narrow, purpose-built replacements for the direct `register_store` access anon
+lost in `20260824055000`, which is why they are SECURITY DEFINER at all —
+`public_roster()` returns names and session titles only, and
+`record_local_checkin()` can write exactly one attendance key.
+
+Revoking those three grants to clear the warnings is what took the trainee-facing
+pages down on 1 September: the register itself kept working, because organisers
+are `authenticated`, so the breakage was invisible from the inside and showed up
+only as "Could not reach the register" on a scanned QR code. If you want them
+gone, the flow has to be redesigned — the grants cannot simply be withdrawn.
 
 ---
 
@@ -557,6 +572,7 @@ above — they coexist fine.
 | Settings → Pages stuck on "provisioning" certificate | The record is orange-clouded, so GitHub can't complete its challenge. Switch it to **DNS only** and the certificate issues within minutes (§5). |
 | Emailed feedback links point at the old github.io URL | `APP_BASE_URL` still holds the old address, or was never set. Supabase → Edge Functions → Secrets (§5, step 4). Old links still redirect, so this is cosmetic rather than broken. |
 | A page sits on "Loading…" and never finishes | Reload once. If it persists, the Supabase library failed to load from the CDN — the page now says so explicitly rather than hanging. Check the connection, or whether a hospital network is blocking `cdn.jsdelivr.net`. |
+| **“Could not reach the register”** on the QR sign-in or feedback page | Almost never the connection, despite what the message says. Both pages open by reading their session row with the publishable key, so this is what a *withdrawn database grant* looks like from the outside. Check it in the SQL editor:<br><br>`select has_column_privilege('anon','public.sessions','title','select'),`<br>`       has_function_privilege('anon','public.public_roster()','execute');`<br><br>Both must be `true`. If either is `false`, re-run `supabase/migrations/20260901220000_restore_anonymous_qr_and_feedback_access.sql`. Anonymous read of `sessions` (six columns) and execute on `public_roster()` / `record_local_checkin()` are load-bearing for the whole QR flow — revoking them takes the trainee-facing pages down while the register itself keeps working, which is why it reads as the site being broken. |
 | Trainee sign-in / feedback page asks for a password | It shouldn't — those never touch login. If it does, you're looking at `index.html` itself rather than `checkin.html` / `feedback.html`; check the link or QR code being used. |
 
 Function logs: Supabase dashboard → Edge Functions → `register-api` → Logs.

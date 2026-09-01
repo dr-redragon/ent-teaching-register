@@ -281,7 +281,7 @@ async function boot() {
   let rows;
   try {
     rows = await ENT.rest('sessions?id=eq.' + encodeURIComponent(SESSION_ID) + '&select=id,title,session_date,location,form');
-  } catch (e) { return fail('Could not reach the register.'); }
+  } catch (e) { return fail(ENT.loadFailure(e)); }
   session = rows && rows[0];
   if (!session) return fail('That session no longer exists.');
 
