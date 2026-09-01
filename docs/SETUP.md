@@ -17,18 +17,59 @@ feedback never see any of this; they only ever use `checkin.html` /
 `feedback.html`, which don't require an account.
 
 There is no self-service sign-up, by design — you control exactly who can see
-the roster. To add someone:
+the roster. Accounts are managed from the register itself, on the
+**Users & access** tab, so this is no longer a trip to the Supabase dashboard.
 
-1. Supabase dashboard → **Authentication → Users → Add user**.
-2. Enter their email and a password (or send an invite, if you'd rather they
-   set their own). Tick **Auto Confirm User** so they can sign in immediately.
-3. Give them the URL and that email/password. They sign in from the page
-   itself — there's nothing else to configure per person.
+To add someone: type their email on that tab and press **Add**.
 
-Remove access the same way: delete the user from that same list. There's no
-separate "roles" concept — anyone with an account sees and can change
-everything in the register, same as before this existed, just no longer
-open to the world.
+- Leave the password box **blank** and they are emailed an invitation. They
+  follow the link, choose their own password, and are signed in. Nothing has to
+  be passed to them out of band.
+- **Or set a password there** and tell them what it is. Use this when their
+  address can't receive our mail. The account is confirmed immediately, and they
+  can change the password later from **Forgot password?**.
+
+Each row on that tab has **Edit** (change their email, set a new password, or
+grant/revoke administrator), **Send reset email** (the same link the sign-in
+page's *Forgot password?* sends, triggered on their behalf, so you never have to
+know their password) and **✕** to delete the account.
+
+Deleting an account removes the sign-in and nothing else. Trainees, attendance,
+excuses, feedback and certificates don't belong to an organiser account, so
+nothing in the register goes with it.
+
+### Administrators
+
+There are exactly two levels:
+
+| | Sees the register | Sees **Users & access** |
+|---|---|---|
+| Organiser | yes | no |
+| Administrator | yes | yes |
+
+Being an administrator adds that tab and nothing else — every organiser could
+already see and change the whole register, and still can. Grant it with the
+**Administrator** tick box under **Edit**, or when adding someone.
+
+`mabdelaziz@outlook.com` is the first administrator; everyone else is granted
+from inside the app by an existing one.
+
+Two changes are refused, so an administrator can't lock themselves out of the
+one tab that could let them back in: you cannot delete your own account, and you
+cannot remove your own administrator access. Another administrator can do either
+for you. (This is also what keeps at least one administrator in existence: only
+an administrator can reach these controls, and they can never be the target.)
+
+Hiding the tab is a convenience, not the boundary. Every account action is
+served by the `admin-*` actions on the Edge Function, which look the *caller* up
+in `app_admins` before doing anything — so a signed-in organiser who knows the
+URL, edits the page, or calls the API directly still gets a flat 403. The
+`app_admins` table itself grants a signed-in user read access to exactly one
+row, their own, and no write access at all: granting admin happens only under
+the service role, after that check.
+
+The Supabase dashboard (**Authentication → Users**) still works and is still the
+way back in if you ever revoke your own access by other means.
 
 ### Forgotten passwords
 
@@ -509,7 +550,7 @@ above — they coexist fine.
 | Emails only reach you | The Resend sandbox sender — `CERT_FROM_EMAIL` is unset or still `@resend.dev`. Verify a domain (§2). The Check-in tab and session console both flag this explicitly. |
 | A push says some people failed | The result names each person and the reason — an invalid address, an unverified domain, a rate limit. Fix the address on the Trainees & sessions tab and push again; anyone already emailed is skipped. |
 | Two entries for the same trainee | They signed in as "my name is not on the list" with a different spelling from their roster entry, so the match missed. Delete the duplicate on the *Trainees & sessions* tab, then tick them present on the grid for that day. |
-| Can't log in to the register | Confirm the account exists under Authentication → Users and **Auto Confirm User** was ticked. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or reset it from the Supabase dashboard (Users → the account → Send password recovery, or set a new one directly). |
+| Can't log in to the register | Check the account on the **Users & access** tab: if it still shows *Invited — not signed in*, they never followed the invitation link — use **Send reset email** to give them a fresh one. A wrong password shows "Incorrect email or password" — use **Forgot password?** on the sign-in screen, or **Edit** their row and set a new password. Failing all that, the Supabase dashboard (Authentication → Users) still works. |
 | Forgot-password email never arrives | Confirm the page's URL is in Authentication → URL Configuration → Redirect URLs (see §1). Also check spam — Supabase's built-in sender is rate-limited and sometimes filtered. |
 | Site unreachable right after the domain switch | The DNS record isn't there (or hasn't propagated) but `CNAME` is already on `main`, so GitHub is redirecting to a name that doesn't resolve. Check `dig +short register.traineehq.com` returns `dr-redragon.github.io`; add the record if it doesn't (§5). |
 | Redirect loop / "too many redirects" on the domain | Cloudflare's SSL/TLS mode is `Flexible` with the record proxied. Set **SSL/TLS → Overview** to `Full`, or grey-cloud the record back to DNS only (§5). |
