@@ -688,6 +688,7 @@
           <label class="report-check"><input type="checkbox" id="reportShowRaw" checked> Raw attendance %</label>
           <label class="report-check"><input type="checkbox" id="reportShowAdj" checked> Adjusted attendance %</label>
         </div>
+        <label class="report-check" style="margin-top:4px"><input type="checkbox" id="reportShowSessStats" checked> Attendance statistics by teaching session</label>
         <label class="report-check" style="margin-top:10px;padding-top:12px;border-top:1px solid var(--line)"><input type="checkbox" id="reportSummaryOnly"> Summary only — show totals only, no percentages or session grid</label>
       </div>
     </div>
@@ -2906,6 +2907,7 @@ function generateReport(){
   const showSessions=!summaryOnly&&document.getElementById('reportShowSessions').checked;
   const showRaw=!summaryOnly&&document.getElementById('reportShowRaw').checked;
   const showAdj=!summaryOnly&&document.getElementById('reportShowAdj').checked;
+  const showSessStats=document.getElementById('reportShowSessStats').checked;
   // one year selected => a single table either way
   const layout=selectedYears.length>1?document.getElementById('reportLayout').value:'combined';
 
@@ -2941,7 +2943,7 @@ function generateReport(){
   if(hideNA) overall=overall.filter(r=>r.eligible>0);
 
   const html=buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,includeIDT,
-                              hideNA,layout,showSessions,showRaw,showAdj,summaryOnly});
+                              hideNA,layout,showSessions,showRaw,showAdj,showSessStats,summaryOnly});
   const win=window.open('','_blank');
   if(!win){ toast('Pop-up blocked — please allow pop-ups for this page'); return; }
   win.document.write(html);
@@ -2949,7 +2951,21 @@ function generateReport(){
   hideReportModal();
 }
 
-function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,includeIDT,hideNA,layout,showSessions,showRaw,showAdj,summaryOnly}){
+// Per-session totals across the trainees in a report section. Built from the
+// same rows as the trainee table, so the report's filters apply to both.
+// Rate = attended / (eligible - excused), matching the adjusted % per trainee.
+function sessionStatsFor(rows, sessList){
+  return sessList.map((sess,i)=>{
+    const c={present:0,absent:0,excused:0,na:0};
+    rows.forEach(r=>{ c[r.cells[i].state]++; });
+    const eligible=c.present+c.absent+c.excused;
+    const denom=eligible-c.excused;
+    return {sess, attended:c.present, absent:c.absent, excused:c.excused, notEligible:c.na,
+            eligible, rate: denom>0? Math.round(c.present/denom*100) : null};
+  });
+}
+
+function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,includeIDT,hideNA,layout,showSessions,showRaw,showAdj,showSessStats,summaryOnly}){
   const now=new Date().toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'});
   const yearLabel=selectedYears.join(', ');
   const multi=selectedYears.length>1;
@@ -3007,6 +3023,38 @@ function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,inc
     }).join('');
   };
 
+  // attendance statistics by teaching session, one row per session
+  const sessStatsFor=sec=>{
+    if(!showSessStats||!sec.sess.length) return '';
+    const stats=sessionStatsFor(sec.rows,sec.sess);
+    const rated=stats.filter(x=>x.rate!==null);
+    const meanRate=rated.length?Math.round(rated.reduce((a,x)=>a+x.rate,0)/rated.length):null;
+    const meanAtt=(stats.reduce((a,x)=>a+x.attended,0)/stats.length).toFixed(1);
+    const rows=stats.map((x,i)=>{
+      const rowBg=i%2===0?'#ffffff':'#faf8f0';
+      const td=(v,extra='')=>`<td style="text-align:center;font-variant-numeric:tabular-nums;background:${rowBg};${extra}">${v}</td>`;
+      let cells=`<td style="white-space:nowrap;color:#5a7060;background:${rowBg}">${escHtml(fmtMonth(x.sess.month))}</td>`;
+      cells+=`<td style="font-weight:600;background:${rowBg}">${escHtml(x.sess.title)}</td>`;
+      cells+=td(x.attended,'font-weight:600')+td(x.absent)+td(x.excused)+td(x.notEligible,'color:#7a7568')+td(x.eligible);
+      if(!summaryOnly){
+        const bar=x.rate===null?'':`<span style="display:inline-block;vertical-align:middle;width:60px;height:6px;border-radius:99px;background:#ece8db;margin-left:8px;overflow:hidden"><span style="display:block;height:100%;width:${x.rate}%;background:${pctHex(x.rate)}"></span></span>`;
+        cells+=`<td style="white-space:nowrap;font-weight:700;color:${pctHex(x.rate)};background:${rowBg}">${x.rate===null?'—':x.rate+'%'}${bar}</td>`;
+      }
+      return `<tr>${cells}</tr>`;
+    }).join('');
+    const meta=`Mean ${meanAtt} attendee${meanAtt==='1.0'?'':'s'} per session`+
+      (summaryOnly||meanRate===null?'':` · mean session attendance ${meanRate}%`)+
+      (summaryOnly?'':' · rate excludes excused and not-eligible trainees');
+    return `<div class="sub-title">Attendance by teaching session</div>
+      <div class="section-meta">${meta}</div>
+      <div class="twrap">
+        <table>
+          <thead><tr><th>Date</th><th>Session</th><th style="text-align:center">Attended</th><th style="text-align:center">Absent</th><th style="text-align:center">Excused</th><th style="text-align:center">Not eligible</th><th style="text-align:center">Eligible</th>${summaryOnly?'':'<th>Attendance</th>'}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  };
+
   // one block per section — a separate table for each academic year
   const sectionsHtml=sections.map(sec=>{
     const el=sec.rows.filter(r=>r.eligible>0);
@@ -3023,6 +3071,7 @@ function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,inc
           <tbody>${bodyFor(sec)}</tbody>
         </table>
       </div>
+      ${sessStatsFor(sec)}
     </div>`;
   }).join('');
 
@@ -3040,6 +3089,7 @@ function buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,inc
   if(!includeIDT) filters.push('Excludes trainees who left via IDT out');
   if(hideNA) filters.push('Excludes trainees with no eligible sessions');
   if(summaryOnly) filters.push('Summary view (totals only)');
+  if(showSessStats) filters.push('Includes attendance by teaching session');
   const filtersText=filters.join(' · ');
 
   const widest=Math.max(...sections.map(sec=>sec.sess.length));
@@ -3071,6 +3121,7 @@ body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:#f0ede
 .section-title::after{content:'';flex:1;height:1px;background:#d8d2c0}
 .section-meta{font-size:11.5px;color:#7a7568;margin-bottom:11px}
 .ysection{margin-bottom:30px}
+.sub-title{font-family:Georgia,serif;font-size:13.5px;font-weight:700;color:#2c4d39;margin:20px 0 4px}
 .ysection:last-of-type{margin-bottom:22px}
 .twrap{background:#fff;border:1px solid #d8d2c0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(21,33,28,.07);overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:12px}
@@ -3087,7 +3138,7 @@ tbody tr:last-child td{border-bottom:none}
   .print-btn{display:none}
   .twrap{box-shadow:none;border-radius:0;overflow:visible}
   .ysection{break-inside:auto;page-break-inside:auto}
-  .section-title{break-after:avoid;page-break-after:avoid}
+  .section-title,.sub-title{break-after:avoid;page-break-after:avoid}
   ${landscapeRule}
 }
 </style>
