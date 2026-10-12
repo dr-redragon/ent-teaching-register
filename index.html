@@ -560,6 +560,10 @@
           <div><input id="trEmail" type="email" placeholder="Email (optional)"></div>
           <div><button class="btn primary" id="trAdd">Add</button></div>
         </div>
+        <div class="inline-form" style="grid-template-columns:1.2fr 2fr;margin-top:10px">
+          <div><div class="month-input" data-monthpicker><input type="text" id="trStart" placeholder="Started (e.g. Aug 2026)" autocomplete="off"><button type="button" class="month-cal-btn" aria-label="Open calendar">📅</button></div></div>
+          <p class="helper" style="margin:0">Month they joined the programme. Sessions before it don't count for or against them, and they're left out of earlier years. Blank: an ST3 starts this August; anyone else counts for every session.</p>
+        </div>
         <p class="helper">Grade keeps itself up to date: whatever a trainee picks at their next sign-in replaces what is held here, since it changes between rotations. Set it by hand for anyone who has not signed in yet, or use <strong>Edit</strong> on their row to correct a name, grade or email. Email is used to send certificates — trainees without one are asked to add it when they next sign in.</p>
         <div id="trList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
         <button type="button" class="former-toggle" id="formerToggle">
@@ -720,6 +724,11 @@
         <label class="fld" for="trEditGrade">Grade</label>
         <select id="trEditGrade"></select>
         <p class="helper" id="trEditGradeNote"></p>
+      </div>
+      <div class="field">
+        <label class="fld" for="trEditStart">Started on programme</label>
+        <div class="month-input" data-monthpicker><input type="text" id="trEditStart" placeholder="Blank = counts for every session" autocomplete="off"><button type="button" class="month-cal-btn" aria-label="Open calendar">📅</button></div>
+        <p class="helper">Sessions before this month don't count for or against them, and they're left out of any year that ends before it.</p>
       </div>
       <div class="field" style="margin-bottom:0">
         <label class="fld" for="trEditEmail">Email</label>
@@ -1031,6 +1040,9 @@ async function saveDB(){
      status:[{id,trainee,type,start:'2026-02',end:'2026-05'|null}]
    }
    Grade is captured per check-in (it changes each rotation), not on the trainee.
+   trainees[].startMonth ('YYYY-MM' or '') is when they joined the programme.
+   Sessions before it are outside their training: they are not counted for or
+   against them, and they are left out of any year that ends before it.
    Status semantics for eligibility of a session month M (start/end are 'YYYY-MM' or null):
      active  -> eligible always (baseline)
      cct     -> training ends. Ineligible for M after the end month (end falls back to start).
@@ -1216,7 +1228,49 @@ function latestGrade(traineeId, scope){
 /* ---- eligibility & calculation engine ---- */
 function statusFor(traineeId){ return DB.status.filter(s=>s.trainee===traineeId); }
 
+// The month a trainee joined the programme, or '' if they count for every session.
+function traineeStart(traineeId){ const t=findTrainee(traineeId); return (t&&t.startMonth)||''; }
+// Sessions from before the trainee joined. These are not theirs at all, so they
+// are left out of every total -- not even as "not eligible".
+function beforeStart(traineeId, sessMonth){ const m=traineeStart(traineeId); return !!m && sessMonth<m; }
+// Has the trainee joined by the end of this run of sessions? Anyone who has not
+// is left out of that year's tables, reports and exports altogether.
+function startedBy(traineeId, sessList){
+  const m=traineeStart(traineeId);
+  return !m || !sessList.length || sessList[sessList.length-1].month>=m;
+}
+// First month of the academic year containing 'YYYY-MM' (August).
+function acYearFirstMonth(month){ return acYearStart(month)+'-08'; }
+
+// Trainees saved before startMonth existed carry no start, so a new ST3 counted
+// as absent for every session ever held. Work one out once, then store it:
+//  - their first sign-in with a grade was as ST3 -> they started that academic
+//    year (ST3 is the first year of the programme), or with their first sign-in
+//    of any kind if that was earlier;
+//  - no sign-ins at all and held as ST3 -> they start this academic year.
+// Anyone else gets '' (counts for everything, as before). The organiser can
+// change it under Edit. Returns true if anything changed, so it can be saved.
+function backfillStartMonths(){
+  const all=sessionsSorted();
+  let changed=false;
+  DB.trainees.forEach(t=>{
+    if(t.startMonth!==undefined) return;
+    let start='';
+    const attended=all.filter(s=>isPresent(t.id,s.id));
+    const firstGraded=attended.find(s=>gradeAt(t.id,s.id));
+    if(firstGraded && gradeAt(t.id,firstGraded.id)==='ST3'){
+      start=acYearFirstMonth(firstGraded.month);
+      if(attended[0].month<start) start=acYearFirstMonth(attended[0].month);
+    } else if(!attended.length && (t.grade||'').trim()==='ST3'){
+      start=currentAcademicYear().split('/')[0]+'-08';
+    }
+    t.startMonth=start; changed=true;
+  });
+  return changed;
+}
+
 function isEligible(traineeId, sessMonth){
+  if(beforeStart(traineeId, sessMonth)) return false;  // not on the programme yet
   // default eligible; a status row can switch it off
   for(const st of statusFor(traineeId)){
     if(st.type==='active') continue;
@@ -1259,6 +1313,7 @@ function computeRowForSessions(trainee, sessList){
   for(const s of sessList){
     const st = cellState(trainee.id, s);
     cells.push({sess:s, state:st});
+    if(beforeStart(trainee.id, s.month)) continue; // before they joined: not theirs to count
     total++;                                   // every session in scope
     if(st==='na') continue;
     eligible++;                                // eligible sessions
@@ -1450,7 +1505,7 @@ function renderYearTabs(){
 // visible; only a genuine non-member of the scope (CCT'd, IDT'd out, not yet
 // arrived, or just never eligible) is hidden.
 function dashRowsFor(sessList,q,hideNA){
-  let rows=DB.trainees.filter(t=>t.name.toLowerCase().includes(q))
+  let rows=DB.trainees.filter(t=>t.name.toLowerCase().includes(q) && startedBy(t.id,sessList))
                       .map(t=>computeRowForSessions(t,sessList));
   let hidden=0;
   if(hideNA && sessList.length){
@@ -2138,10 +2193,11 @@ async function syncCloudCheckins(s){
       if(!t){
         // Signed in as "my name is not on the list". They join the roster rather
         // than being reported and forgotten -- this session counts for them, and
-        // they are on the list for every teaching day from here on. Grade and
+        // they are on the list for every teaching day from here on (and none
+        // before -- startMonth is this session's month). Grade and
         // gradeFrom are left to refreshGrades() below, which dates the grade to
         // this session's month exactly as it does for everybody else.
-        t={id:uid(),name,email:'',grade:'',gradeFrom:''};
+        t={id:uid(),name,email:'',grade:'',gradeFrom:'',startMonth:s.month};
         DB.trainees.push(t);
         byName.set(name.toLowerCase(), t);
         enrolled.push(name);
@@ -2344,6 +2400,7 @@ function showTraineeEdit(id){
   editingTraineeId=id;
   document.getElementById('trEditName').value=t.name||'';
   document.getElementById('trEditEmail').value=(t.email||'').trim();
+  setMonthValue(document.getElementById('trEditStart'),t.startMonth||'');
   document.getElementById('trEditError').innerHTML='';
 
   const cur=(t.grade||'').trim() || latestGrade(id);
@@ -2379,8 +2436,13 @@ async function saveTraineeEdit(){
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return err.innerHTML='<div class="notice bad">That doesn’t look like a valid email.</div>';
 
+  const startEl=document.getElementById('trEditStart');
+  const start=monthValue(startEl);
+  if(startEl.value.trim() && !start) return err.innerHTML='<div class="notice bad">Couldn’t read the start month — try e.g. “Aug 2026”.</div>';
+
   t.name=name;
   t.email=email;
+  t.startMonth=start;
   if(grade!==((t.grade||'').trim() || latestGrade(t.id))){
     t.grade=grade;
     // Anchor the change to their newest sign-in so an older one cannot undo it,
@@ -2778,8 +2840,11 @@ function wire(){
     const emEl=document.getElementById('trEmail'); const em=emEl.value.trim();
     if(em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return toast('That doesn’t look like a valid email');
     const grEl=document.getElementById('trGrade');
-    DB.trainees.push({id:uid(),name:n,email:em||'',grade:grEl?grEl.value:'',gradeFrom:''});
-    document.getElementById('trName').value=''; emEl.value='';
+    const stEl=document.getElementById('trStart');
+    const gr=grEl?grEl.value:'';
+    const start=monthValue(stEl) || (gr==='ST3' ? currentAcademicYear().split('/')[0]+'-08' : '');
+    DB.trainees.push({id:uid(),name:n,email:em||'',grade:gr,gradeFrom:'',startMonth:start});
+    document.getElementById('trName').value=''; emEl.value=''; setMonthValue(stEl,'');
     if(grEl) grEl.value='';
     await saveDB(); renderAll(); toast('Trainee added');
   };
@@ -2816,7 +2881,7 @@ function exportCsv(){
   const lines=[head.map(csvCell).join(',')];
   const yearLabel = scoped || (ys.length? ys.join(' + ') : '—');
   const csvCutoff = sess.length? sess[sess.length-1].month : undefined;
-  DB.trainees.map(t=>computeRowForSessions(t,sess)).forEach(r=>{
+  DB.trainees.filter(t=>startedBy(t.id,sess)).map(t=>computeRowForSessions(t,sess)).forEach(r=>{
     const stat=activeStatusType(r.trainee.id, csvCutoff);
     const cells=r.cells.map(c=>{
       if(c.state==='present'){ const g=gradeAt(r.trainee.id,c.sess.id); return g?'P:'+g:'P'; }
@@ -2834,7 +2899,7 @@ function backup(){ dl(new Blob([JSON.stringify(DB,null,2)],{type:'application/js
 function restore(e){
   const f=e.target.files[0]; if(!f)return;
   const r=new FileReader();
-  r.onload=async()=>{ try{ DB=JSON.parse(r.result); await saveDB(); renderAll(); toast('Data restored'); }catch(err){ toast('Invalid file'); } };
+  r.onload=async()=>{ try{ DB=normaliseDB(JSON.parse(r.result)); refreshGrades(); backfillStartMonths(); await saveDB(); renderAll(); toast('Data restored'); }catch(err){ toast('Invalid file'); } };
   r.readAsText(f);
 }
 function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
@@ -2919,7 +2984,7 @@ function generateReport(){
   if(!includeIDT) trainees=trainees.filter(t=>!statusFor(t.id).some(s=>s.type==='idt_out'));
 
   const buildSection=(title,subtitle,sessList)=>{
-    let rows=trainees.map(t=>computeRowForSessions(t,sessList));
+    let rows=trainees.filter(t=>startedBy(t.id,sessList)).map(t=>computeRowForSessions(t,sessList));
     if(hideNA) rows=rows.filter(r=>r.eligible>0);
     rows.sort((a,b)=>a.trainee.name.localeCompare(b.trainee.name));
     return {title,subtitle,sess:sessList,rows};
@@ -2939,7 +3004,7 @@ function generateReport(){
   }
 
   // headline figures are always across everything selected
-  let overall=trainees.map(t=>computeRowForSessions(t,filtSess));
+  let overall=trainees.filter(t=>startedBy(t.id,filtSess)).map(t=>computeRowForSessions(t,filtSess));
   if(hideNA) overall=overall.filter(r=>r.eligible>0);
 
   const html=buildReportHtml({sections,overall,filtSess,selectedYears,includeCCT,includeIDT,
@@ -2957,7 +3022,8 @@ function generateReport(){
 function sessionStatsFor(rows, sessList){
   return sessList.map((sess,i)=>{
     const c={present:0,absent:0,excused:0,na:0};
-    rows.forEach(r=>{ c[r.cells[i].state]++; });
+    // someone who had not joined yet is not counted for this session at all
+    rows.forEach(r=>{ if(!beforeStart(r.trainee.id,sess.month)) c[r.cells[i].state]++; });
     const eligible=c.present+c.absent+c.excused;
     const denom=eligible-c.excused;
     return {sess, attended:c.present, absent:c.absent, excused:c.excused, notEligible:c.na,
@@ -3284,6 +3350,7 @@ async function bootApp(){
   if(cached){
     DB = normaliseDB(cached);
     refreshGrades();
+    backfillStartMonths();
     setSyncStatus('Showing your saved copy — checking the database…');
     wireOnce();
     renderAll();
@@ -3298,9 +3365,10 @@ async function bootApp(){
     const differs = !cached || JSON.stringify(remote) !== JSON.stringify(cached);
     DB = normaliseDB(remote);
     const regraded = refreshGrades();
+    const started = backfillStartMonths();
     wireOnce();
     if(differs){ renderAll(); applyTabHash(); }
-    if(regraded) saveDB();
+    if(regraded||started) saveDB();
   } else if(remote){
     wireOnce();
   } else if(!cached){
