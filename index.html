@@ -1247,7 +1247,10 @@ function acYearFirstMonth(month){ return acYearStart(month)+'-08'; }
 //  - their first sign-in with a grade was as ST3 -> they started that academic
 //    year (ST3 is the first year of the programme), or with their first sign-in
 //    of any kind if that was earlier;
-//  - no sign-ins at all and held as ST3 -> they start this academic year.
+//  - no sign-ins at all and held as ST3 -> they start this academic year, unless
+//    anything else on record (an excusal, a leave or status entry) is from an
+//    earlier year: that is an existing ST3 who missed every session, e.g. on
+//    leave, and they are left counting for every session.
 // Anyone else gets '' (counts for everything, as before). The organiser can
 // change it under Edit. Returns true if anything changed, so it can be saved.
 function backfillStartMonths(){
@@ -1262,7 +1265,13 @@ function backfillStartMonths(){
       start=acYearFirstMonth(firstGraded.month);
       if(attended[0].month<start) start=acYearFirstMonth(attended[0].month);
     } else if(!attended.length && (t.grade||'').trim()==='ST3'){
-      start=currentAcademicYear().split('/')[0]+'-08';
+      const thisYear=currentAcademicYear().split('/')[0]+'-08';
+      const earlierExcusal=DB.excused.some(e=>{
+        const s=e.trainee===t.id && findSession(e.session);
+        return s && s.month<thisYear;
+      });
+      const earlierStatus=statusFor(t.id).some(st=>(st.start&&st.start<thisYear)||(st.end&&st.end<thisYear));
+      if(!earlierExcusal && !earlierStatus) start=thisYear;
     }
     t.startMonth=start; changed=true;
   });
